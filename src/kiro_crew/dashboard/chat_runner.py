@@ -364,6 +364,12 @@ from kiro_crew.dashboard.recovery_replays import (
     cancel_notice,
     replays_of,
 )
+
+# ``QUESTION_CARD_SHOWN_PREFIX`` and ``apply_session_directive`` are part of the
+# runner's base-names surface (``_BASE_NAMES`` in
+# test_chat_runner_composition_contract.py), which callers and tests read off
+# ``chat_runner`` directly; the ratchet keeps them bound here even though the
+# turn loop itself consumes the structured outcome.
 from kiro_crew.dashboard.session_directive_apply import (  # noqa: F401
     QUESTION_CARD_SHOWN_PREFIX,
     DirectiveOutcome,
@@ -641,6 +647,7 @@ from kiro_crew.dashboard.chat_utils import (  # noqa: E402, F401
     EMPTY_RUNG_CONTINUE,
     EMPTY_RUNG_GIVE_UP,
     EMPTY_RUNG_REPLAY,
+    EMPTY_TURN_NOTICE_KIND,
     FALSE_TOOL_BLOCKER_REPLAY_KIND,
     MCP_APP_MESSAGE_KIND,
     MODEL_UNENTITLED_KIND,
@@ -9192,14 +9199,23 @@ async def _run_chat(
     # match on the outcome prose.
     _terminal_directive_applied = False
     _terminal_directive_kind = ""
+    # The tool_call_ids whose directive ENDED the turn. The matching tool rows
+    # get ``meta.ends_turn = True`` (persisted and patched live), which is what
+    # the interrupted-turn scan reads to tell an applied quiet end from a
+    # refused one — both carry the same trusted tool identity.
+    _terminal_directive_tcids: set[str] = set()
     # Model activity (text or a tool call) observed AFTER the terminal directive
     # applied: a turn-end contract violation. Only counted, then reported once
     # at turn end — it never fails the turn and never re-arms recovery.
     _activity_after_terminal = 0
 
-    def _record_terminal_directive(kind: str, outcome: DirectiveOutcome) -> None:
+    def _record_terminal_directive(kind: str, outcome: DirectiveOutcome, tcid: str) -> None:
         nonlocal _terminal_directive_applied, _terminal_directive_kind
-        if outcome.ends_turn and not _terminal_directive_applied:
+        if not outcome.ends_turn:
+            return
+        if tcid:
+            _terminal_directive_tcids.add(_redact_tool_field(tcid))
+        if not _terminal_directive_applied:
             _terminal_directive_applied = True
             _terminal_directive_kind = kind
 
@@ -12764,7 +12780,9 @@ async def _run_chat(
                             producer_wake_loop_id=_directive_loop_id,
                         )
                         _applied_one = _applied_outcome.text
-                        _record_terminal_directive(_applied_kind, _applied_outcome)
+                        _record_terminal_directive(
+                            _applied_kind, _applied_outcome, event.tool_call_id or ""
+                        )
                         logger.info(
                             "session-directive applied OUT OF BAND for %s "
                             "(tool_call_id=%s, kind=%s): the marker was unavailable; "
@@ -12978,7 +12996,9 @@ async def _run_chat(
                                 producer_wake_loop_id=_directive_loop_id,
                             )
                             _applied_one = _applied_outcome.text
-                            _record_terminal_directive(_dir_tool, _applied_outcome)
+                            _record_terminal_directive(
+                                _dir_tool, _applied_outcome, event.tool_call_id or ""
+                            )
                             _out = _redact_tool_field(_applied_one)
                             _dir_consumed_out[event.tool_call_id] = _out
                         else:
@@ -13041,6 +13061,40 @@ async def _run_chat(
                         ):
                             _meta = m.setdefault("meta", {})
                             _meta["done"] = True
+                            if (
+                                _tcid in _terminal_directive_tcids
+                                and _tcid_identifies
+                                and str(m.get("ts") or "") not in _rows_before_turn
+                                and not _meta.get("ends_turn")
+                            ):
+                                # Structured, never prose: the applied terminal
+                                # directive's row is what closes the turn for the
+                                # interrupted-turn scan (``is_quiet_end_row``). A
+                                # REFUSED call carries the same trusted identity
+                                # and no flag, so it reads as an unanswered turn.
+                                # Scoped like the app flag above: only a row THIS
+                                # turn wrote, and only when the id names one call
+                                # -- a transcript-preserving reset can reuse an
+                                # earlier turn's tool_call_id, and stamping that
+                                # older (refused) row would record it as applied.
+                                # Patched live too, or the open client would offer
+                                # Resume until its next transcript fetch.
+                                _meta["ends_turn"] = True
+                                _ends_ts = str(m.get("ts") or "")
+                                if _ends_ts:
+                                    try:
+                                        state.broadcast_ws(
+                                            "chat_message_update",
+                                            {
+                                                "slot": slot.key,
+                                                "ts": _ends_ts,
+                                                "meta": {"ends_turn": True},
+                                            },
+                                        )
+                                    except Exception:
+                                        logger.debug(
+                                            "ends_turn flag broadcast failed", exc_info=True
+                                        )
                             # Written only when this row HAD an app record, and
                             # never written False: absent means "no app", which
                             # is also what every row predating this field says.
@@ -16121,6 +16175,7 @@ async def _run_chat(
                 "ℹ️ The context was compacted mid-turn and the response stopped "
                 "there — continuing automatically.",
                 "msg msg-info",
+                meta={"kind": EMPTY_TURN_NOTICE_KIND},
             )
             _queue_recovery(
                 0,
@@ -16265,6 +16320,7 @@ async def _run_chat(
                             f"(recovery {_continue_no} of {_max_continues})."
                         ),
                         "msg msg-info",
+                        meta={"kind": EMPTY_TURN_NOTICE_KIND},
                     )
                     _empty_continue_msg = _ACTIVITY_NO_REPLY_CONTINUE_MSG
                 else:
@@ -16277,6 +16333,7 @@ async def _run_chat(
                             f"(recovery {_continue_no} of {_max_continues})."
                         ),
                         "msg msg-info",
+                        meta={"kind": EMPTY_TURN_NOTICE_KIND},
                     )
                     _empty_continue_msg = _EMPTY_AUTO_CONTINUE_MSG
                 _queue_recovery(
@@ -16314,7 +16371,9 @@ async def _run_chat(
                     _empty_msg = EMPTY_TURN_NOTICE_AFTER_RECOVERY
                 else:
                     _empty_msg = EMPTY_TURN_NOTICE
-                slot.append("notice", _empty_msg, "msg msg-info")
+                slot.append(
+                    "notice", _empty_msg, "msg msg-info", meta={"kind": EMPTY_TURN_NOTICE_KIND}
+                )
             # ONE warning per empty verdict, emitted AFTER the rung is chosen so
             # the log line carries the decision rather than only the symptom. The
             # predecessor logged just "Empty model response (attempt N)", which
