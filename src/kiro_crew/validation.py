@@ -575,6 +575,138 @@ def clamp_to_max_len(value: str, max_len: int) -> str:
     return head + _CLAMP_NOTE.format(n=len(value) - len(head))
 
 
+# An int above this magnitude cannot be a value a numeric-looking string
+# argument was meant to carry: JavaScript numbers (and JSON parsers that back
+# them with IEEE-754 doubles) only represent integers exactly up to 2**53, so a
+# larger int that reached a string field was either never a round-trippable id
+# (it already lost precision upstream) or is an outright wrong value. The PR
+# rejects a float on a string field for exactly this reason — a value that
+# cannot be the author's original text is a louder, safer failure than a
+# silently-wrong coercion — and this applies the same bound to the int case.
+_MAX_EXACT_INT = 2**53
+
+
+def _coerce_number_to_string_for_string_field(value: Any, spec: FieldSpec) -> Any:
+    """Repair an integer that reached a string field as a number.
+
+    Some agent runtimes defer a tool's schema and load it on demand; a few of
+    those, when they later marshal the model's ``arguments``, re-type a
+    top-level argument whose VALUE looks like a number (``"42"``) into a JSON
+    number — even though the loaded tool schema declared that field a string.
+    By the time the call reaches a validator the type has already been lost
+    upstream, so a field that says ``str`` sees an ``int`` and the call is
+    rejected when the author clearly meant a string.
+
+    This repair belongs ONLY at the MCP tool-call entry points (where that
+    upstream re-typing happens), NOT in the shared ``validate_field`` — the
+    dashboard HTTP endpoints also validate through that function and never see
+    the re-typing, so coercing there would silently change their contract and
+    let an int slip through a field a caller reads from the raw body.
+
+    This is a NARROW, EXACT repair, not a general coercion:
+
+    * It fires ONLY for a field whose declared type is EXACTLY ``str`` (not a
+      tuple like ``(int, float)`` that legitimately accepts a number) — a field
+      that wanted a number keeps getting one.
+    * It converts an ``int`` to its string form and NOTHING else: a ``str``
+      stays a ``str``, a ``bool`` (an ``int`` subclass) is left for the normal
+      type check to reject, and a ``float`` / list / dict / ``None`` is
+      untouched.
+    * An ``int`` whose magnitude exceeds ``2**53`` is REFUSED (``ValidationError``)
+      rather than coerced: past that bound it is a precision-loss or
+      outright-wrong id, the same hazard this repair declines to paper over for
+      floats.
+
+    A ``float`` is DELIBERATELY not converted. ``str(float)`` is the shortest
+    round-tripping form, which is NOT the author's original text whenever that
+    text carried a digit the float cannot distinguish: ``"1790284307.156620"``
+    becomes the float ``1790284307.15662`` and then ``"1790284307.15662"`` — a
+    DIFFERENT, still-schema-valid value (it still matches a ``^\\d+\\.\\d+$``
+    timestamp pattern), so a Slack reply would silently go to the wrong thread
+    instead of failing loudly. For a value the author meant as a string, a loud
+    ``expected str`` is strictly safer than a silently-wrong one, so a float on
+    a string field is left to the ordinary type error. Only ``int`` round-trips
+    exactly (``str(42) == "42"``, within the exact-integer bound), so only
+    ``int`` is repaired here.
+    """
+    if spec.type is not str:
+        return value
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, int):
+        if abs(value) > _MAX_EXACT_INT:
+            raise ValidationError(
+                spec.name,
+                f"integer {value} exceeds the exact-integer bound ({_MAX_EXACT_INT}); "
+                "a numeric id this large cannot be a precise string value",
+            )
+        return str(value)
+    return value
+
+
+def coerce_mcp_tool_args(args: dict[str, Any], schema: ToolSchema) -> dict[str, Any]:
+    """Return ``args`` with int-on-string-field values repaired, for MCP entry points.
+
+    Apply this at an MCP tool-call entry point (``mcp_core._validate_args`` and
+    the other MCP servers' equivalents) BEFORE :func:`validate_tool_args`. It
+    walks the schema's string-typed fields and runs the narrow int->str repair
+    (see :func:`_coerce_number_to_string_for_string_field`) on each present
+    argument, leaving every other value — and every argument the schema does
+    not name — untouched. An out-of-range int raises ``ValidationError`` here,
+    so the entry point rejects it exactly as the schema's own checks would.
+
+    This is intentionally NOT part of :func:`validate_field`: the dashboard HTTP
+    endpoints validate through the same function and must keep their original
+    contract, so the repair lives only where the upstream re-typing occurs.
+    """
+    if not isinstance(args, dict):
+        return args
+    repaired = dict(args)
+    for spec in schema.fields:
+        if spec.name in repaired:
+            repaired[spec.name] = _coerce_number_to_string_for_string_field(
+                repaired[spec.name], spec
+            )
+    return repaired
+
+
+def coerce_mcp_tool_args_json_schema(args: dict[str, Any], input_schema: Any) -> dict[str, Any]:
+    """JSON-Schema counterpart of :func:`coerce_mcp_tool_args`, for MCP servers
+    that validate through :func:`validate_mcp_tool_arguments`.
+
+    Repair a top-level argument an upstream deferred-schema runtime re-typed
+    from a numeric-looking string ("42" -> 42) back to its string form, BEFORE
+    validation, for a property the inputSchema types EXACTLY ``"string"``. The
+    same narrow rules as the ``FieldSpec`` path apply: only an ``int`` is
+    coerced, a ``bool`` and a ``float`` are left for the type check, and an int
+    beyond the exact-integer bound raises ``ValidationError``.
+
+    Only top-level properties are considered — the re-typing hits top-level
+    arguments, and walking nested subschemas would risk changing values the
+    schema never typed as string.
+    """
+    if not isinstance(args, dict) or not isinstance(input_schema, dict):
+        return args
+    props = input_schema.get("properties")
+    if not isinstance(props, dict):
+        return args
+    repaired = dict(args)
+    for key, value in args.items():
+        sub = props.get(key)
+        if isinstance(sub, dict) and sub.get("type") == "string":
+            if isinstance(value, bool):
+                continue
+            if isinstance(value, int):
+                if abs(value) > _MAX_EXACT_INT:
+                    raise ValidationError(
+                        key,
+                        f"integer {value} exceeds the exact-integer bound ({_MAX_EXACT_INT}); "
+                        "a numeric id this large cannot be a precise string value",
+                    )
+                repaired[key] = str(value)
+    return repaired
+
+
 def validate_field(value: Any, spec: FieldSpec) -> Any:
     """Validate and normalize a single field value. Returns cleaned value."""
     if value is None:

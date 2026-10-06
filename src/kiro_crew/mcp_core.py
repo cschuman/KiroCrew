@@ -89,6 +89,7 @@ from kiro_crew.skills import SkillsLoader
 from kiro_crew.trigger_match import rank_triggered
 from kiro_crew.validation import (
     MCP_CORE_SCHEMAS,
+    coerce_mcp_tool_args,
     validate_tool_args,
 )
 
@@ -1928,7 +1929,12 @@ def _validate_args(name: str, args: dict[str, Any]) -> dict[str, Any]:
     """Validate tool arguments against schema. Returns cleaned args."""
     schema = MCP_CORE_SCHEMAS.get(name)
     if schema:
-        return validate_tool_args(args, schema)
+        # Repair an int that an upstream deferred-schema runtime re-typed from a
+        # numeric-looking string ("42" -> 42) back to its string form on a
+        # string field, BEFORE validation. This lives at the MCP entry point —
+        # not in the shared validate_field — so the dashboard HTTP endpoints
+        # keep their original contract (see coerce_mcp_tool_args).
+        return validate_tool_args(coerce_mcp_tool_args(args, schema), schema)
     return args  # tools without schemas pass through
 
 
