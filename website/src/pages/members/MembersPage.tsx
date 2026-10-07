@@ -110,6 +110,7 @@ import Glass from '../../components/Glass'
 import { resolvePillActivity, type PillActivityKind } from './pillActivity'
 import ChatPane from '../../components/ChatPane'
 import MateResumeCard from './MateResumeCard'
+import MateWelcomeCard from './MateWelcomeCard'
 import { useMateGreeting } from './mateGreeting'
 import type { ThreadHooks } from '../../app-sdk/messageRenderers'
 import { threadsApi, threadsQueryKey } from '../../api/threads'
@@ -2421,6 +2422,7 @@ export default function MembersPage() {
   const { greeting: mateGreeting, failure: mateGreetingFailure, dismiss: dismissMateGreeting } = useMateGreeting(
     confirmedSlot,
     pillStreamState === 'idle' && !pillLiveSlot?.running,
+    activeView ? { slug: activeView.slug, member: activeView.name, lastActiveTs: activeView.last_active_ts ?? 0 } : null,
   )
   const pillLastActive = (activeView ?? active)?.last_active_ts
   const [pillIdleAge, setPillIdleAge] = useState('')
@@ -4060,8 +4062,9 @@ export default function MembersPage() {
                 )}
               </div>
             )}
-            {mateGreeting && crewmateIdentity && (
-              <MateResumeCard resume={mateGreeting.resume} crewmate={crewmateIdentity} onDismiss={dismissMateGreeting} />
+            {mateGreeting && crewmateIdentity && (mateGreeting.kind === 'warm'
+              ? <MateResumeCard resume={mateGreeting.resume} crewmate={crewmateIdentity} onDismiss={dismissMateGreeting} />
+              : <MateWelcomeCard recap={mateGreeting.recap} crewmate={crewmateIdentity} onDismiss={dismissMateGreeting} />
             )}
             {mateGreetingFailure && crewmateIdentity && (
               /* The status read failed (not "no ledger", which is no greeting).
@@ -4069,7 +4072,7 @@ export default function MembersPage() {
                  composer below may hold an unsaved draft. */
               <div className="px-4 pt-3">
                 <ErrorNotice
-                  message={t('pages.membersPage.resume_failed', { name: crewmateIdentity.label || crewmateIdentity.name })}
+                  message={t(mateGreetingFailure.kind === 'cold' ? 'pages.membersPage.welcome_failed' : 'pages.membersPage.resume_failed', { name: crewmateIdentity.label || crewmateIdentity.name })}
                   report={reportForError(mateGreetingFailure.error)}
                   variant="inline"
                   askAgent={false}
@@ -4099,7 +4102,8 @@ export default function MembersPage() {
                     // The failure notice above owns the verdict on this thread
                     // while a repair has failed; the pane's own "Session
                     // ready" would contradict it one line down.
-                    hideEmptyHint={activeThreadFailed}
+                    // A greeting card above already speaks for the empty chat.
+                    hideEmptyHint={activeThreadFailed || mateGreeting?.kind === 'cold'}
                     crewmate={crewmateIdentity}
                     onOpenCrewWorkLog={openCrewWorkLog}
                     openSideChat={openMemberSideChat}
