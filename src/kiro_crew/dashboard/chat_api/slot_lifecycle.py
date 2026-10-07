@@ -938,6 +938,28 @@ async def _close_slot(
     # replacement's session no matter which transcript that replacement writes. Skip
     # it unless the key is still ours.
     if _slot_still_ours(state, name, slot):
+        # Record the DELIBERATE close as a ``session/closed`` crew-log edge with
+        # ``END_REASON_REMOVED`` so a later ``session_status`` gone row for this
+        # worker reads ``closed`` ("finished, nothing to re-dispatch") rather than
+        # ``lost``. This lives HERE, in the one deliberate-close caller, not in
+        # ``SessionManager.remove``: ``remove`` has many callers (archive sweeps,
+        # mid-handshake teardowns, Slack command paths) that are NOT a worker
+        # finishing, and stamping ``removed`` from inside it would make a reaped or
+        # torn-down worker read ``closed`` too. The sid is resolved from the session
+        # MAP (``mapped_sid``, in-memory, no prune), not from a live provider,
+        # because a worker that finished and sat idle may already have been
+        # process-recycled by ``reset`` -- which pops the live session and wrote a
+        # ``reset`` close -- before its tab was closed; the map still names the sid,
+        # and this ``removed`` edge, written after that ``reset``, is the newest
+        # lifecycle entry, so the gone row reads ``closed``. Read before the
+        # ``remove`` await below (``remove`` may delete the mapping), fail-soft, and
+        # a no-op for a key with no mapped sid.
+        close_sid = state.sessions.mapped_sid(_history_key_for(name))
+        if close_sid:
+            from kiro_crew.crew_log import emit as crew_log_emit
+            from kiro_crew.metrics.sessions import END_REASON_REMOVED
+
+            crew_log_emit.on_session_closed(close_sid, END_REASON_REMOVED)
         await state.sessions.remove(_history_key_for(name))
     _release_closed_execution(state, slot, closing_key, closing_execution)
     _sync_dashboard_slots(state)

@@ -764,3 +764,47 @@ async def test_a_banner_loop_whose_cycles_are_spent_is_still_not_restored(
     assert resp.status == 500
     assert svc.get_by_slot(NAME) is None, "a spent loop was revived to preserve its banner"
     svc.stop()
+
+
+@pytest.mark.asyncio
+async def test_a_deliberate_close_emits_a_removed_crew_log_edge(tmp_path, monkeypatch) -> None:
+    """The deliberate close (tab ✕ / ``session_close``) writes a ``session/closed``
+    crew-log edge with ``END_REASON_REMOVED`` for the slot's mapped sid, so a later
+    ``session_status`` gone row for this worker reads ``closed`` ("finished") and not
+    ``lost``. The sid is read from the session MAP (``mapped_sid``), which still
+    names it even when a prior idle-expiry ``reset`` already popped the live session
+    before the tab was closed -- the finished-then-reset-then-close case that read
+    ``lost`` before. This lives in ``close_slot``, the one deliberate caller; the
+    generic ``SessionManager.remove`` stays silent (pinned in
+    ``test_session_service_boundaries``).
+    """
+    from unittest.mock import patch
+
+    state = _state_with_slot(tmp_path)
+    state.sessions.mapped_sid = lambda _key: "sid-finished-worker"
+
+    with patch("kiro_crew.crew_log.emit.on_session_closed") as on_closed:
+        resp = await handlers.api_chat_slot_delete(_Req(state, NAME))
+
+    assert resp.status == 200
+    from kiro_crew.metrics.sessions import END_REASON_REMOVED
+
+    on_closed.assert_called_once_with("sid-finished-worker", END_REASON_REMOVED)
+
+
+@pytest.mark.asyncio
+async def test_a_deliberate_close_with_no_mapped_sid_emits_nothing(tmp_path, monkeypatch) -> None:
+    """A slot the session map has no sid for (never ran a turn, or its mapping was
+    already cleared) writes no close edge rather than a ``removed`` edge for an empty
+    sid -- the emit is a no-op on a blank sid, so the close still succeeds and the
+    gone-row split simply has no close to read (it defaults to ``lost``)."""
+    from unittest.mock import patch
+
+    state = _state_with_slot(tmp_path)
+    state.sessions.mapped_sid = lambda _key: ""
+
+    with patch("kiro_crew.crew_log.emit.on_session_closed") as on_closed:
+        resp = await handlers.api_chat_slot_delete(_Req(state, NAME))
+
+    assert resp.status == 200
+    on_closed.assert_not_called()
