@@ -1038,7 +1038,7 @@ describe('ActivityViewer — subagent tool-call timeline', () => {
         view="subagents"
         subagents={{ s1: mkAgent('s1', {
           status: 'tool', streaming: 'x', lastTool: 'Running: npm test', toolCount: 5,
-          toolCalls: [{ tool: 'Reading src/a.ts', ts: 1 }, { tool: 'Running: npm test', ts: 2 }],
+          toolCalls: [{ tool: 'Reading src/a.ts' }, { tool: 'Running: npm test' }],
         }) }}
       />,
     )
