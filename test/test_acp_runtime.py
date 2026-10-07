@@ -9849,6 +9849,121 @@ async def test_activate_mode_bracketed_allows_the_launched_agent_every_start():
 
 
 @pytest.mark.asyncio
+async def test_activate_mode_bracketed_refuses_a_live_toggle_the_empty_gate_misses():
+    """The fail-open GPT flagged: a ``disabledTools`` toggle added to a warm
+    runtime's spec AFTER the mount read leaves the per-call gate empty while the
+    per-session element is already mounted, so approving the tool runs it. The
+    bracket reads the LIVE spec right before the send and refuses even when the
+    carried gate is EMPTY -- the empty set is exactly this case, not a no-op."""
+    from kiro_crew.agent_materialization.worker_agent import DerivedSpecSnapshot
+
+    rt, _, _ = _make_runtime()
+    rt._agent = "kirocrew"
+    # The pre-prep snapshot the mount composed from carried nothing.
+    snapshot = DerivedSpecSnapshot("id", "fp", {"name": "kirocrew", "allowedTools": []})
+    rt._send_and_await = AsyncMock()  # type: ignore[method-assign]
+    rt.terminate_session = AsyncMock()  # type: ignore[method-assign]
+
+    # The LIVE spec now switches off kirocrew-core/learn_add, and does NOT
+    # auto-approve it, so the toggle is enforceable -- but the gate carries nothing.
+    live = {
+        "name": "kirocrew",
+        "allowedTools": [],
+        "mcpServers": {"kirocrew-core": {"disabledTools": ["learn_add"]}},
+    }
+    with patch("kiro_crew.acp.session_mcp._agent_spec_for", return_value=live):
+        with pytest.raises(AcpRuntimeError, match="switches off a tool"):
+            await rt._activate_mode_bracketed(
+                "s1",
+                "kirocrew",
+                budget=30.0,
+                payload_snapshot=snapshot,
+                wire_registered=True,
+                carried_denied=frozenset(),
+            )
+    # Refused BEFORE any set_mode goes out, and the already-created session is torn
+    # down rather than left running the unenforced toggle.
+    rt._send_and_await.assert_not_called()
+    rt.terminate_session.assert_awaited_once_with("s1")
+
+
+@pytest.mark.asyncio
+async def test_activate_mode_bracketed_checks_the_live_spec_for_a_non_worker_agent():
+    """``require_fresh_derived_spec`` returns ``None`` for every agent but the worker
+    mirror, so the snapshot carries no spec for an ordinary by-name-granting agent.
+    The bracket must still refuse that agent when its LIVE on-disk spec switches off
+    a tool the empty gate does not carry -- the fallback read via ``_agent_spec_for``
+    keeps the gap closed for exactly the agents this fix exists for."""
+    from kiro_crew.agent_materialization.worker_agent import DerivedSpecSnapshot
+
+    rt, _, _ = _make_runtime()
+    rt._agent = "kirocrew"
+    # The fresh-path snapshot carries NO spec (as it does for a non-worker agent).
+    snapshot = DerivedSpecSnapshot("id", "fp", None)
+    rt._send_and_await = AsyncMock()  # type: ignore[method-assign]
+    rt.terminate_session = AsyncMock()  # type: ignore[method-assign]
+
+    live = {
+        "name": "conductor",
+        "allowedTools": [],
+        "mcpServers": {"kirocrew-core": {"disabledTools": ["learn_add"]}},
+    }
+    with patch("kiro_crew.acp.session_mcp._agent_spec_for", return_value=live):
+        with pytest.raises(AcpRuntimeError, match="switches off a tool"):
+            await rt._activate_mode_bracketed(
+                "s1",
+                "conductor",
+                budget=30.0,
+                payload_snapshot=snapshot,
+                wire_registered=True,
+                carried_denied=frozenset(),
+            )
+    rt._send_and_await.assert_not_called()
+    rt.terminate_session.assert_awaited_once_with("s1")
+
+
+@pytest.mark.asyncio
+async def test_refuse_carried_deny_bypass_allows_a_toggle_the_gate_already_carries():
+    """A live ``disabledTools`` toggle that the per-call gate ALREADY carries is
+    enforced, not a bypass -- the reconcile must not refuse the ordinary case where
+    the mount saw the toggle and carried it. Driven at the helper so the assertion is
+    about the reconcile alone, not the rest of the bracket."""
+    rt, _, _ = _make_runtime()
+
+    # Live view declares the SAME toggle the gate carries -> enforceable, not a gap.
+    live = {
+        "name": "kirocrew",
+        "allowedTools": [],
+        "mcpServers": {"kirocrew-core": {"disabledTools": ["learn_add"]}},
+    }
+    with patch("kiro_crew.acp.session_mcp._agent_spec_for", return_value=live):
+        # No raise: the carried gate covers the live toggle.
+        await rt._refuse_carried_deny_bypass(
+            "kirocrew", frozenset({("kirocrew-core", "learn_add")})
+        )
+
+
+@pytest.mark.asyncio
+async def test_refuse_carried_deny_bypass_allows_an_auto_approved_toggle():
+    """An auto-approved toggle is NOT a bypass the gate must carry: the mount
+    withholds the whole element for it rather than carrying it, so its absence from
+    the carried set is expected. The reconcile subtracts the auto-approved pairs
+    before comparing, so a live spec that whole-server auto-approves the toggled
+    tool does not refuse even with an empty gate."""
+    rt, _, _ = _make_runtime()
+
+    live = {
+        "name": "kirocrew",
+        "allowedTools": ["@kirocrew-core"],
+        "mcpServers": {"kirocrew-core": {"disabledTools": ["learn_add"]}},
+    }
+    with patch("kiro_crew.acp.session_mcp._agent_spec_for", return_value=live):
+        # No raise: (kirocrew-core, learn_add) is auto-approved, so it is withheld by
+        # the mount, not a carried pair the gate was expected to hold.
+        await rt._refuse_carried_deny_bypass("kirocrew", frozenset())
+
+
+@pytest.mark.asyncio
 async def test_activate_mode_bracketed_refresh_still_rejects_a_foreign_mode():
     """The launched-agent allowance is narrow: only ``self._agent`` passes with no
     view. A session start naming some OTHER unprepared mode still raises through the
