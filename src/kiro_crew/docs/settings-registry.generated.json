@@ -1599,6 +1599,13 @@
       "configKey": "stt.polish"
     },
     {
+      "id": "voice.use-a-key-to-start-dictation",
+      "label": "Use a key to start dictation",
+      "tab": "voice",
+      "route": "/settings/voice?highlight=voice.use-a-key-to-start-dictation",
+      "description": "Turn this off to stop a key from starting dictation — you can still dictate from the microphone button."
+    },
+    {
       "id": "voice.voice",
       "label": "Voice",
       "tab": "voice",

@@ -2614,6 +2614,15 @@ export const SETTINGS_REGISTRY: SettingEntry[] =
     "configKey": "stt.polish"
   },
   {
+    "id": "voice.use-a-key-to-start-dictation",
+    "label": "Use a key to start dictation",
+    "labelKey": "pages.settings.sttSettings.ptt_enabled",
+    "description": "Turn this off to stop a key from starting dictation — you can still dictate from the microphone button.",
+    "tab": "voice",
+    "type": "toggle",
+    "occurrence": 1
+  },
+  {
     "id": "voice.voice",
     "label": "Voice",
     "labelKey": "pages.settings.voicePanel.voice",
