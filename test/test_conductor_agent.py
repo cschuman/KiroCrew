@@ -248,8 +248,7 @@ class TestConductorInstaller:
         case, because they reach ``allowed_tools_to_permissions`` as separate
         patterns and a family could classify differently: persistent work
         (``task_run``, the ``workflow_*`` group), agent fan-out (the ``spawn_*``
-        group), session and workspace mutation (``set_project``,
-        ``reset_conversation``), egress (``deploy_artifact``, ``browser``,
+        group), workspace mutation (``set_project``), egress (``deploy_artifact``, ``browser``,
         ``ops_mission_control_api``) and the ``artifact_*`` writes.
 
         Spelled as literals, deliberately: deriving the expectation from
@@ -273,6 +272,10 @@ class TestConductorInstaller:
             "@kirocrew-core/send_message",
             "@kirocrew-core/send_notification",
             "@kirocrew-core/ask_question",
+            # Granted on purpose: the conductor drops its own chat at a round
+            # close. The directive consumer still refuses it from any wake it
+            # cannot vouch for (test_conductor_wake_reset.py).
+            "@kirocrew-core/reset_conversation",
         }
         # The bare server is what this test exists to keep out: it would re-grant
         # all 74 registered core tools, including every verb named below.
@@ -289,9 +292,9 @@ class TestConductorInstaller:
             "spawn_sub_agents",
             "spawn_steer",
             "spawn_continue",
-            # Mutating the caller's own session or project out from under it.
+            # Mutating the caller's own project out from under it.
+            # (``reset_conversation`` moved to the granted set above, on purpose.)
             "set_project",
-            "reset_conversation",
             # Egress and machine reach.
             "deploy_artifact",
             "browser",
@@ -679,6 +682,7 @@ class TestConductorInstaller:
             "@kirocrew-core/send_message",
             "@kirocrew-core/send_notification",
             "@kirocrew-core/ask_question",
+            "@kirocrew-core/reset_conversation",
             "@kirocrew-dashboard/chat_folder_tree",
             "@kirocrew-dashboard/chat_folder_create",
             "@kirocrew-dashboard/chat_folder_file_self",
@@ -709,6 +713,7 @@ class TestConductorInstaller:
             "kirocrew-core/list_sessions",
             "kirocrew-core/monitor_start",
             "kirocrew-core/monitor_update",
+            "kirocrew-core/reset_conversation",
             "kirocrew-core/resource_status",
             "kirocrew-core/select_crew",
             "kirocrew-core/send_message",
@@ -873,6 +878,7 @@ class TestConductorInstaller:
             "@kirocrew-core/send_message",
             "@kirocrew-core/send_notification",
             "@kirocrew-core/ask_question",
+            "@kirocrew-core/reset_conversation",
             "@kirocrew-dashboard/chat_folder_tree",
             "@kirocrew-dashboard/chat_folder_create",
             "@kirocrew-dashboard/chat_folder_file_self",
