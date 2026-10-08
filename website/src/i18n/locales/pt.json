@@ -6948,8 +6948,10 @@
       "suggested_follow_up_many": "Acompanhamentos sugeridos",
       "suggested_follow_up_one": "Acompanhamento sugerido",
       "suggested_follow_up_other": "Acompanhamentos sugeridos",
+      "project_directory_is_not_a_git_repository": "{{path}} não é um repositório git, então não há repositório do qual criar uma branch",
       "this_session_has_no_project_directory_so_there_i": "Esta sessão não tem diretório de projeto, então não há repositório do qual criar uma branch",
-      "worktree_disabled_no_project_directory": "\"Adicionar a esta sessão\" pré-preenche o campo de mensagem — nada é enviado até você clicar em enviar. Worktrees não estão disponíveis aqui: esta sessão não tem diretório de projeto (escolha um no chip Projeto do campo de mensagem)."
+      "worktree_disabled_no_project_directory": "\"Adicionar a esta sessão\" pré-preenche o campo de mensagem — nada é enviado até você clicar em enviar. Worktrees não estão disponíveis aqui: esta sessão não tem diretório de projeto (escolha um no chip Projeto do campo de mensagem).",
+      "worktree_disabled_not_a_git_repository": "\"Adicionar a esta sessão\" pré-preenche o campo de mensagem — nada é enviado até você clicar em enviar. Worktrees não estão disponíveis aqui: o diretório de projeto desta sessão não é um repositório git (escolha um repositório git no chip Projeto do campo de mensagem)."
     },
     "inboundLinkChip": {
       "driven_from": "Controlada por {{label}}",

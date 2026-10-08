@@ -6948,8 +6948,10 @@
       "suggested_follow_up_many": "Suivis suggérés",
       "suggested_follow_up_one": "Suivi suggéré",
       "suggested_follow_up_other": "Suivis suggérés",
+      "project_directory_is_not_a_git_repository": "{{path}} n’est pas un dépôt git, il n’y a donc aucun dépôt d’où créer une branche",
       "this_session_has_no_project_directory_so_there_i": "Cette session n’a pas de répertoire de projet, il n’y a donc aucun dépôt d’où créer une branche",
-      "worktree_disabled_no_project_directory": "« Ajouter à cette session » pré-remplit le champ de saisie — rien n'est envoyé avant que vous appuyiez sur Envoyer. Les worktrees ne sont pas disponibles ici : cette session n'a pas de répertoire de projet (choisissez-en un via la puce Projet du champ de saisie)."
+      "worktree_disabled_no_project_directory": "« Ajouter à cette session » pré-remplit le champ de saisie — rien n'est envoyé avant que vous appuyiez sur Envoyer. Les worktrees ne sont pas disponibles ici : cette session n'a pas de répertoire de projet (choisissez-en un via la puce Projet du champ de saisie).",
+      "worktree_disabled_not_a_git_repository": "« Ajouter à cette session » pré-remplit le champ de saisie — rien n’est envoyé avant que tu appuies sur Envoyer. Les worktrees ne sont pas disponibles ici : le répertoire de projet de cette session n’est pas un dépôt git (choisis un dépôt git via la puce Projet du champ de saisie)."
     },
     "inboundLinkChip": {
       "driven_from": "Pilotée depuis {{label}}",

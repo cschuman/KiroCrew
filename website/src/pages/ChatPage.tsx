@@ -6291,6 +6291,7 @@ export default function ChatPage({ mode, embedded, embedMode, popout, noUrlSync 
                   <FollowUpCard
                     items={pendingFollowup.items}
                     projectDir={currentSlot?.project || undefined}
+                    projectIsRepo={projectGitError ? undefined : projectGit?.repo}
                     onAddToSession={followupAddToSession}
                     onStartInWorktree={followupStartInWorktree}
                     onSkip={(index) => dispatch(dismissFollowupItem({ slot: activeSlot, index, ts: pendingFollowup.ts }))}

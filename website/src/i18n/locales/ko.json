@@ -6730,8 +6730,10 @@
       "skip": "건너뛰기",
       "start_in_new_worktree": "새 worktree에서 시작",
       "suggested_follow_up_other": "제안된 후속 작업",
+      "project_directory_is_not_a_git_repository": "{{path}}은(는) git 저장소가 아니어서 브랜치를 만들 저장소가 없습니다",
       "this_session_has_no_project_directory_so_there_i": "이 세션에는 프로젝트 디렉터리가 없어 브랜치를 만들 저장소가 없습니다",
-      "worktree_disabled_no_project_directory": "‘이 세션에 추가’는 작성창을 미리 채웁니다 — 전송을 누르기 전까지는 아무것도 전송되지 않습니다. 여기서는 worktree를 사용할 수 없습니다. 이 세션에는 프로젝트 디렉터리가 없습니다 (작성창의 프로젝트 칩에서 선택하세요)."
+      "worktree_disabled_no_project_directory": "‘이 세션에 추가’는 작성창을 미리 채웁니다 — 전송을 누르기 전까지는 아무것도 전송되지 않습니다. 여기서는 worktree를 사용할 수 없습니다. 이 세션에는 프로젝트 디렉터리가 없습니다 (작성창의 프로젝트 칩에서 선택하세요).",
+      "worktree_disabled_not_a_git_repository": "‘이 세션에 추가’는 작성창을 미리 채웁니다 — 전송을 누르기 전까지는 아무것도 전송되지 않습니다. 여기서는 worktree를 사용할 수 없습니다. 이 세션의 프로젝트 디렉터리는 git 저장소가 아닙니다 (작성창의 프로젝트 칩에서 git 저장소를 선택하세요)."
     },
     "inboundLinkChip": {
       "driven_from": "{{label}}에서 구동 중",
