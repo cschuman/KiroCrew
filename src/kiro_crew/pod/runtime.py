@@ -338,7 +338,12 @@ def write_env_file(cfg: PodConfig, name: str, updates: dict[str, str]) -> None:
             if "\n" in val or "\r" in val:
                 raise PodError(f"pod env value for {key!r} must be single-line")
         cfg.pods_dir.mkdir(parents=True, exist_ok=True)
-        body = "".join(f"{k}='{v}'\n" for k, v in data.items())
+        # Keep a UTF-8 byte-order mark the file was saved with: it is what makes
+        # read_env_file decode the file as UTF-8, and dropping it would leave a
+        # non-ASCII value to the locale decode on the next read.
+        from kiro_crew.config.loader import env_bom_prefix
+
+        body = env_bom_prefix(cfg.env_file(name)) + "".join(f"{k}='{v}'\n" for k, v in data.items())
         atomic_write(cfg.env_file(name), body, newline="")
 
 

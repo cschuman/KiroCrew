@@ -9,6 +9,7 @@ fix rather than raising a bare ``UnicodeDecodeError``.
 from __future__ import annotations
 
 import codecs
+import locale
 from pathlib import Path
 
 import pytest
@@ -97,6 +98,30 @@ def test_merge_over_a_bom_file_keeps_the_first_key_once(
     rt.write_env_file(cfg, "x", {"MYVAR": "bye"})
 
     assert rt.read_env_file(cfg, "x") == {"MYVAR": "bye", "PORT": "7999"}
+
+
+def test_merge_keeps_the_utf8_mark_so_a_non_ascii_value_survives_a_non_utf8_locale(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # Without the mark the next read falls to the locale decode, and under
+    # cp1252 the UTF-8 bytes of a Cyrillic value do not decode.
+    cfg = _cfg(tmp_path, monkeypatch)
+    cfg.env_file("x").write_bytes(codecs.BOM_UTF8 + "SEED='\u0401'\n".encode("utf-8"))
+    monkeypatch.setattr(locale, "getpreferredencoding", lambda do_setlocale=True: "cp1252")
+
+    rt.pin_checkout(cfg, "x", Path("/abs/co"))
+
+    assert cfg.env_file("x").read_bytes().startswith(codecs.BOM_UTF8)
+    assert rt.read_env_file(cfg, "x") == {"SEED": "\u0401", "CHECKOUT": str(Path("/abs/co"))}
+
+
+def test_merge_into_a_bomless_file_adds_no_mark(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    cfg = _cfg(tmp_path, monkeypatch)
+    rt.write_env_file(cfg, "x", {"PORT": "7999"})
+
+    assert cfg.env_file("x").read_bytes() == b"PORT='7999'\n"
 
 
 def test_parse_env_text_drops_a_decoded_mark() -> None:

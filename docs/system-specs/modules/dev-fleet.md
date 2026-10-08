@@ -532,6 +532,9 @@ file as UTF-8 and is dropped, so the first variable keeps its name, and a
 UTF-16 or UTF-32 file raises `PodError` telling the operator to save it as
 UTF-8. Returning `{}` there instead would launch the pod without the operator's
 variables and let `write_env_file` overwrite the file it could not read.
+`write_env_file` writes a UTF-8 mark back when the file had one, so a
+non-ASCII value keeps decoding as UTF-8 after a merge rather than falling to
+the locale decode.
 `_parse_env_text` also drops a leading mark, for `runtime_ports._read_peer_env`,
 which decodes the bytes itself, and Dev Fleet's strict pin reader does the same.
 
