@@ -3087,8 +3087,20 @@ names, allocated before the sandbox wrap and reclaimed by
 `agent_scratch.sweep_dead_scratch` once the process is dead -- so no new tree,
 lock or slot exists. Only the databases move: config, auth and the thread
 rollouts stay in `CODEX_HOME`, and a thread resumes from its rollout (measured on
-codex 0.159), so `spawn_continue` works across runtimes; a fresh home rebuilds
-its index on first start, an accepted cost. A value the operator set, or one a
-cron or workflow `extra_env` carries, reaches the child as set. Without a scratch
-directory nothing is set and one warning is logged: the child gets codex's shared
-default rather than a refused spawn.
+codex 0.159), so `spawn_continue` works across runtimes. A value the operator
+set, or one a cron or workflow `extra_env` carries, reaches the child as set.
+Without a scratch directory nothing is set and one warning is logged: the child
+gets codex's shared default rather than a refused spawn.
+
+The rebuild cost is paid on every start, not once. The scratch directory lives
+and dies with its process, so each new chat, resume, subagent, cron run and
+knowledge worker that starts Codex begins on an empty database home and rebuilds
+codex's index from the rollouts in `CODEX_HOME`. The cost scales with the
+user's Codex history: reported on codex 0.159 with about 3,200 threads (7.5 GB
+of rollouts), `initialize` took about 60 s and wrote about 400 MB per runtime,
+against 0.2 s on the shared home. On that host dashboard model discovery for a
+Codex crew gave up before `initialize` answered, so the model picker offered
+only `auto`. The operator workaround is to set `CODEX_SQLITE_HOME` in the gateway's
+own environment (for a systemd user unit, `Environment=CODEX_SQLITE_HOME=%h/.codex`
+in a drop-in), which restores the shared, warm index and gives up the isolation
+from other `codex app-server` processes that this section exists for.
