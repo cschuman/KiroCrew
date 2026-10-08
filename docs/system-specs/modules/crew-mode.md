@@ -822,7 +822,14 @@ shows a single empty-state hero (ghost avatar, "No crewmates yet", one line,
 with crewmates and no `?member=`, the crewmate the user last chatted with opens
 (greatest `last_chat_ts`, see below; it is server-side, so a gateway restart or a
 new browser keeps it), else the remembered crewmate, else the most recently used
-one (greatest `last_active_ts`, ties keep roster order). Below md
+one (greatest `last_active_ts`, ties keep roster order; never `default`). The
+built-in `default` row is remembered like any other when opened, with the open's
+time beside it (`mc-members-last-member-ts`); it is never ranked by
+`last_chat_ts` (that also moves for every plain chat that picked no crew, so it
+would win nearly always), and instead outranks the last-chatted crewmate exactly
+when the remembered open is newer than that chat (#17210). The time is the
+user's own open (click or link): a restore re-reads it but never re-stamps it.
+A roster holding only `default` still shows the hero. Below md
 nothing auto-opens — the roster is the page. A `?member=` naming a crewmate that
 is gone falls back the same way, under the existing swap notice. The page's copy
 says crewmate / Crewmates and "Built from"; the crew record, its API and its
