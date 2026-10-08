@@ -358,7 +358,10 @@
     "metrics_card_old_data": "पिछला अपडेट 90 सेकंड से अधिक पहले",
     "metrics_card_fetch_failed": "पिछला मेट्रिक अपडेट विफल रहा",
     "metrics_card_cores_one": "{{count}} कोर",
-    "metrics_card_cores_other": "{{count}} कोर"
+    "metrics_card_cores_other": "{{count}} कोर",
+    "tab_title": "{{label}} — {{productName}}",
+    "tab_title_chat": "चैट",
+    "tab_title_session": "{{session}} — {{panel}}"
   },
   "appSdk": {
     "chatEmbed": {

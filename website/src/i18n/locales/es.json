@@ -363,7 +363,10 @@
     "metrics_card_fetch_failed": "La última actualización de métricas falló",
     "metrics_card_cores_many": "{{count}} núcleos",
     "metrics_card_cores_one": "{{count}} núcleo",
-    "metrics_card_cores_other": "{{count}} núcleos"
+    "metrics_card_cores_other": "{{count}} núcleos",
+    "tab_title": "{{label}} — {{productName}}",
+    "tab_title_chat": "Chat",
+    "tab_title_session": "{{session}} — {{panel}}"
   },
   "appSdk": {
     "chatEmbed": {

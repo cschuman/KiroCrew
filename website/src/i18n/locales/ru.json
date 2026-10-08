@@ -368,7 +368,10 @@
     "metrics_card_cores_few": "{{count}} ядра",
     "metrics_card_cores_many": "{{count}} ядер",
     "metrics_card_cores_one": "{{count}} ядро",
-    "metrics_card_cores_other": "{{count}} ядра"
+    "metrics_card_cores_other": "{{count}} ядра",
+    "tab_title": "{{label}} — {{productName}}",
+    "tab_title_chat": "Чат",
+    "tab_title_session": "{{session}} — {{panel}}"
   },
   "appSdk": {
     "chatEmbed": {

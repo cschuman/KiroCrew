@@ -358,7 +358,10 @@
     "metrics_card_old_data": "শেষ আপডেট 90 সেকেন্ডের বেশি আগে",
     "metrics_card_fetch_failed": "শেষ মেট্রিক আপডেট ব্যর্থ হয়েছে",
     "metrics_card_cores_one": "{{count}}টি কোর",
-    "metrics_card_cores_other": "{{count}}টি কোর"
+    "metrics_card_cores_other": "{{count}}টি কোর",
+    "tab_title": "{{label}} — {{productName}}",
+    "tab_title_chat": "চ্যাট",
+    "tab_title_session": "{{session}} — {{panel}}"
   },
   "appSdk": {
     "chatEmbed": {

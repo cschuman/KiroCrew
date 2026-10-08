@@ -358,7 +358,10 @@
     "metrics_card_old_data": "Zuletzt vor mehr als 90 Sekunden aktualisiert",
     "metrics_card_fetch_failed": "Die letzte Aktualisierung der Metriken ist fehlgeschlagen",
     "metrics_card_cores_one": "{{count}} Kern",
-    "metrics_card_cores_other": "{{count}} Kerne"
+    "metrics_card_cores_other": "{{count}} Kerne",
+    "tab_title": "{{label}} — {{productName}}",
+    "tab_title_chat": "Chat",
+    "tab_title_session": "{{session}} — {{panel}}"
   },
   "appSdk": {
     "chatEmbed": {
