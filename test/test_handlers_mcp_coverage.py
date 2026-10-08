@@ -713,6 +713,18 @@ class TestServerDetail:
         assert _payload(resp)["error"] == "invalid JSON"
 
     @pytest.mark.asyncio
+    async def test_put_refuses_a_commented_global_config(self, sandbox: SimpleNamespace) -> None:
+        """A PUT would rewrite the file as plain JSON and drop its comments."""
+        text = '{\n  "mcpServers": {\n    // "parked": {"command": "p"}\n  }\n}\n'
+        sandbox.global_json.write_text(text, encoding="utf-8")
+        resp = await mcp_mod.api_mcp_server_detail(
+            _request({"command": "node"}, match_info={"name": "srv"}, method="PUT")
+        )
+        assert resp.status == 409
+        assert _payload(resp)["code"] == mcp_mod.MCP_CONFIG_HAS_COMMENTS
+        assert sandbox.global_json.read_text(encoding="utf-8") == text
+
+    @pytest.mark.asyncio
     async def test_put_without_command_is_400(self, sandbox: SimpleNamespace) -> None:
         resp = await mcp_mod.api_mcp_server_detail(
             _request({"args": ["x"]}, match_info={"name": "srv"}, method="PUT")

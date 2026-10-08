@@ -68,7 +68,7 @@ from kiro_crew.platform.governance import may_skip_gate_now, strip_ungoverned_au
 from kiro_crew.security import is_sensitive_path
 from kiro_crew.sel import sel
 from kiro_crew.session_map import SUPPRESS_REPLAY_FLAG, SessionMap
-from kiro_crew.user_json import loads_mcp_config, loads_user_json
+from kiro_crew.user_json import has_json_comments, loads_mcp_config, loads_user_json
 from kiro_crew.zip_vet import ZipInventoryRejected, vet_zip_inventory
 
 #: Absolute path of the stdlib-only launch shim, for interpreters whose
@@ -3176,7 +3176,16 @@ def _scrub_legacy_shared_mcp(app_name: str) -> int:
         # rename. It is a DIFFERENT sidecar than _mcp_lock's default (that guards
         # kirocrew.json), so pass the legacy path explicitly.
         with _mcp_lock(target=_LEGACY_SHARED_MCP_PATH):
-            data = loads_mcp_config(_LEGACY_SHARED_MCP_PATH.read_text(encoding="utf-8"))
+            text = _LEGACY_SHARED_MCP_PATH.read_text(encoding="utf-8")
+            if has_json_comments(text):
+                # The rewrite below is plain JSON and would drop the comments.
+                logger.warning(
+                    "Not scrubbing %s for app %s: it has comments or trailing commas",
+                    _LEGACY_SHARED_MCP_PATH,
+                    app_name,
+                )
+                return 0
+            data = loads_mcp_config(text)
             servers = data.get("mcpServers", {})
             stale = [k for k in servers if k.startswith(prefix)]
             if not stale:
