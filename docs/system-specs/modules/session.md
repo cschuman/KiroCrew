@@ -1438,7 +1438,14 @@ against sweep completeness, and are torn down at `close_all`.
   `status: "async_launched"` with a `taskId` (Workflow);
   `_dispatch.parse_background_launch` reads exactly those structured fields, and
   skips an `Agent`/`Task` launch because the adapter holds the prompt open until
-  such a sub-agent settles. Only `AcpClient` — the transport that serves claude,
+  such a sub-agent settles. Those two shapes were captured from claude-agent-acp
+  0.84.0 and Kiro Crew does not pin the adapter, so a rename would silently stop
+  the hold. `_dispatch.unrecognised_background_launch` is the tripwire: a
+  `toolResponse` from a non-held tool whose key, or string `status`, contains
+  `background` or `async` (case-insensitive) while the parse recognised nothing
+  is logged at INFO once per `BackgroundLaunchRecord` (`take_drift`), naming the
+  offending keys. A rename that drops both words (`bgTaskId`) is not caught.
+  Only `AcpClient` — the transport that serves claude,
   the one harness whose adapter stamps the marker — keeps a per-session
   `BackgroundLaunchRecord` today (the `AcpSessionHandle` runtime serves only
   backends that never stamp `_meta.claudeCode`), never reset per turn, exposed as

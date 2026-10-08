@@ -9775,6 +9775,14 @@ class AcpClient:
                 "ACP: harness launched background work for this session: %s",
                 self._background_launches.describe(),
             )
+        drift = self._background_launches.take_drift()
+        if drift is not None:
+            logger.info(
+                "ACP: a tool response looks like a background launch but matches no "
+                "recognised claude-agent-acp shape (%s); the watchdog will not hold "
+                "this session for it. Logged once per session.",
+                drift,
+            )
 
     def background_launch(self) -> tuple[float, str] | None:
         """``(seconds since, description)`` of this session's newest background
