@@ -18042,6 +18042,12 @@
     "keep_current": "Aktuellen Wert behalten",
     "resolve_explanation": "Aktuellen Wert behalten. Anwenden speichert diese Entscheidung und schließt ausstehende Vorschläge.",
     "forget_count": "Ausgewählte Erinnerungen vergessen: {{count}}",
-    "retry_preview_page": "Vorschauseite erneut laden"
+    "retry_preview_page": "Vorschauseite erneut laden",
+    "restore_version": "„{{value}}“ wiederherstellen",
+    "restore_title": "Frühere Version wiederherstellen",
+    "restore_hint": "Beim Wiederherstellen wird dieser Wert als neue Version gespeichert. Frühere Versionen bleiben im Verlauf.",
+    "restored": "Wiederhergestellte Version",
+    "restore_apply": "Version wiederherstellen",
+    "current_version": "Aktuelle Version"
   }
 }
