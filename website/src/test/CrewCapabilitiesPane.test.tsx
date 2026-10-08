@@ -642,7 +642,7 @@ describe('crew capability draft editor with mocked HTTP', () => {
     fireEvent.click(screen.getByRole('tab', { name: 'Tools', exact: true }))
     await pickState('Search read', 'Removed')
     fireEvent.click(screen.getByRole('button', { name: 'Review changes' }))
-    await screen.findByText(/crewA's agent file carries permission settings Crew did not generate/)
+    await screen.findByText(/This page cannot change approvals for crewA: its agent file in ~\/\.kiro\/agents has hand-written permission settings/)
     expect(screen.queryByText(/The saved version changed/)).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Use the new version for this draft' })).not.toBeInTheDocument()
   })
@@ -657,7 +657,7 @@ describe('crew capability draft editor with mocked HTTP', () => {
     expect(screen.queryByText(/The saved version changed/)).not.toBeInTheDocument()
   })
 
-  it.each(['stale_revision', 'stale_preview', 'stale_binding', 'governance_changed', 'source_changed'])('keeps the reload copy for the stale code %s', async code => {
+  it.each(['stale_revision', 'stale_preview', 'stale_binding', 'governance_changed', 'source_changed', 'parent_identity_changed', 'project_identity_changed', 'source_identity_changed', 'materialization_changed'])('keeps the reload copy for the stale code %s', async code => {
     server.use(http.post(`${endpoint}/preview`, () => HttpResponse.json({ error: code, code }, { status: 409 })))
     mount(); await ready()
     fireEvent.click(screen.getByRole('tab', { name: 'Tools', exact: true }))
