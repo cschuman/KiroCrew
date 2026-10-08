@@ -2978,10 +2978,42 @@ async def api_chat_slot_mutes_opened(request: web.Request) -> web.Response:
             "app does not own this slot's transcript",
         )
         return slot_not_found()
-    try:
-        body = await request.json()
-    except Exception:
-        return web.json_response({"error": "invalid JSON", "code": "invalid_json"}, status=400)
+    # User-only provenance. The feature contract (and docs/feature-map) say this
+    # flag is set by the dashboard USER alone -- no agent or MCP route reaches
+    # it, because session_create's own contract forbids an agent opening
+    # already-silenced sessions. The ownership fences above stop a FOREIGN
+    # caller, but an app or internal-agent caller writing to a slot it owns would
+    # still pass them, so a shipped built-in app holding the /api/chat/slots/*
+    # grant could set the flag with no user action. Require positive evidence of
+    # a dashboard human here -- the same (is_dashboard_user AND not internal_auth)
+    # pair the autonudge user-input notifier uses -- so an app caller
+    # (is_dashboard_user is False) and a loopback MCP/cron caller
+    # (internal_auth is True) are both refused before any mutation.
+    if not (request.get("is_dashboard_user") is True and request.get("internal_auth") is not True):
+        source, caller = _audit_origin(request)
+        sel().log_api_access(
+            caller=caller,
+            operation="chat.slot_mutes_opened",
+            outcome="denied",
+            source=source,
+            resources=name,
+            error="mute toggle is a dashboard-user action; app and agent callers are refused",
+        )
+        return web.json_response(
+            {
+                "error": "this setting can only be changed by a dashboard user",
+                "code": "mutes_opened_user_only",
+            },
+            status=403,
+        )
+    # Shared parse-and-shape guard: a body that is valid JSON but not an object
+    # (a list, string or number) answers 400 body_not_object instead of letting
+    # the .get() below turn a client mistake into a 500. The body is a fixed set
+    # of control fields, so the shared default byte cap applies.
+    body, body_err = await read_bounded_json(request)
+    if body_err is not None:
+        return body_err
+    assert body is not None  # read_bounded_json returns (dict, None) on success
     expected_created = str(body.get("expected_created") or "")
     async with _slot_meta_txn_lock(state):
         if (
@@ -3010,15 +3042,23 @@ async def api_chat_slot_mutes_opened(request: web.Request) -> web.Response:
                 {"error": "mutes_opened must be a boolean", "code": "mutes_opened_not_bool"},
                 status=400,
             )
-        slot.mutes_opened = new_value
         changed = prior != new_value
         if changed:
-            # best_effort=False so a lock timeout / disk-full PROPAGATES instead
-            # of being swallowed and acknowledged as a successful change (a
-            # swallowed failure would publish a patch for a setting that never
-            # reached disk and vanishes on the next restart). Persist BEFORE the
-            # patch is pushed; on any failure, restore the prior flag and return
-            # an error without publishing.
+            # Set the live flag FIRST, then persist -- the same order
+            # api_chat_slot_pin uses. Every save path (the full
+            # build_full_line and the empty-window merge_empty_window branch)
+            # serializes the field straight off the live slot, so the committed
+            # value is what reaches disk no matter which branch runs, including
+            # a message-less newborn whose save takes the empty-window merge.
+            # A concurrent dirty-slot flush that takes the transcript lock in
+            # the save's await window now serializes the ALREADY-flipped flag,
+            # so it writes the new value rather than resurrecting ``prior``.
+            #
+            # best_effort=False so a lock timeout / disk-full PROPAGATES rather
+            # than being swallowed and acknowledged as a durable change (a
+            # swallowed failure would answer 200 for a setting that never
+            # reached disk and vanishes on the next restart).
+            slot.mutes_opened = new_value
             try:
                 saved = await save_slot_off_loop(
                     state,
@@ -3028,6 +3068,10 @@ async def api_chat_slot_mutes_opened(request: web.Request) -> web.Response:
                     expected_history_key=authorized_history_key,
                 )
             except Exception:
+                # Roll the live flag back to the committed value, but only while
+                # it still holds THIS request's value so a non-endpoint writer's
+                # newer commit is not erased, and mark the slot dirty so the next
+                # flush reconverges the durable record. Nothing was published.
                 if slot.mutes_opened == new_value:
                     slot.mutes_opened = prior
                 slot._dirty = True
@@ -3054,8 +3098,8 @@ async def api_chat_slot_mutes_opened(request: web.Request) -> web.Response:
                     status=503,
                 )
             if not saved:
-                # A non-raising refuse (the slot was deleted or rebound under
-                # the write): roll back and report it as gone.
+                # A non-raising refuse (the slot was deleted or rebound under the
+                # write). Roll back as above and let the flush reconverge.
                 if slot.mutes_opened == new_value:
                     slot.mutes_opened = prior
                 slot._dirty = True
