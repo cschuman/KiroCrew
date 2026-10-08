@@ -629,6 +629,7 @@ would otherwise clobber your pin.
 | `kirocrew-ledger-conductor.json` | generated; your `allowedTools` entries are carried forward | every gateway start |
 | `kirocrew-pipeline-conductor.json` | generated; your `allowedTools` entries are carried forward | every gateway start |
 | `kirocrew-security-conductor.json` | generated; your `allowedTools` entries are carried forward | every gateway start |
+| `kirocrew-team-lead.json` | generated, and nothing on a previous file is carried forward: the spec is a function of the shipped template, its charter and its grant tuples. A file at this name that this installer did not write is left **untouched** and the install **declined** — attributed on the declared `name` plus a reference to `kirocrew-dashboard` and `kirocrew-work`, taken from the server map, `tools` or a per-tool grant — and the decline is logged at ERROR, so the agent stays absent under this name until you move or rename the file | every gateway start |
 | `kirocrew-knowledge.json` | generated | every gateway start |
 | `kirocrew-research.json` | generated | every gateway start |
 | `kirocrew-heartbeat.json` | generated | every gateway start |
