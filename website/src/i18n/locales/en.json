@@ -8551,6 +8551,7 @@
       "cpu_cores": "CPU (cores)",
       "cpu_cores_hint": "Processor usage measured in CPU cores, not percent. A value of 1.00 means one full core is saturated.",
       "created_by": "Created by {{name}} (not running, so shown top-level)",
+      "created_by_closed": "Created by {{name}} (closed)",
       "credits": "Credits",
       "done": "Done",
       "expand_sessions": "Expand sessions under {{name}}",

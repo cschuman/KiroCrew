@@ -15010,6 +15010,7 @@
       "cpu_cores": "CPU (núcleos)",
       "cpu_cores_hint": "Uso del procesador medido en núcleos de CPU, no en porcentaje. Un valor de 1,00 significa que un núcleo completo está saturado.",
       "created_by": "Creada por {{name}} (no en ejecución, por eso se muestra en el nivel superior)",
+      "created_by_closed": "Creada por {{name}} (cerrada)",
       "credits": "Créditos",
       "done": "Listo",
       "expand_sessions": "Mostrar sesiones de {{name}}",

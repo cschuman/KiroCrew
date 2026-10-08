@@ -43,7 +43,7 @@ import { useAvailableModelsQuery } from '../hooks/useAvailableModels'
 import { useListboxKeyboard } from '../hooks/useListboxKeyboard'
 import { useDndSensors } from '../hooks/useDndSensors'
 import { useSessionPalette } from '../hooks/useSessionPalette'
-import { ancestorsOf, descendantsOf, orphanCitation } from '../lib/sessionLineage'
+import { ancestorsOf, closedCreatorCitation, descendantsOf, orphanCitation } from '../lib/sessionLineage'
 import { partitionBulkSwitch } from '../lib/bulkModelSwitch'
 import { useReducedMotion } from '../hooks/useReducedMotion'
 import { useSimplifiedToolNames } from '../hooks/useSimplifiedToolNames'
@@ -5703,9 +5703,18 @@ function ChatSidebar({
                 // creator closed or because the folder filter conceals it is decided
                 // against the unfiltered population. A creator that is still there is
                 // open and running, so saying it closed would be false.
-                const cited = orphanCitation(slot, tree.parentOf.get(key) ?? null)
+                //
+                // `closedCreatorCitation` is the row the backend re-parented: it IS
+                // placed, under the nearest ancestor still open, and its own creator
+                // closed. Same fact as an orphan's, so the same glyph, and the backend
+                // said so outright -- which is why `ancestor` settles the reading here
+                // rather than the population being consulted for it.
+                const placedUnder = tree.parentOf.get(key) ?? null
+                const cited = orphanCitation(slot, placedUnder)
+                  ?? closedCreatorCitation(slot, placedUnder)
                 const creator = citedCreatorOf(slot)
-                const creatorStillOpen = cited != null && creator !== null
+                const creatorStillOpen = cited != null && slot.parent?.ancestor !== true
+                  && creator !== null
                   && (citedCreatorExists.get(creator.origin)?.has(creator.key) ?? false)
                 rows.push({
                   id: key,

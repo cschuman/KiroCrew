@@ -14516,6 +14516,7 @@
       "cpu_cores": "CPU（核心）",
       "cpu_cores_hint": "以 CPU 核心数衡量处理器用量，而非百分比。值为 1.00 表示一个核心已满载。",
       "created_by": "由 {{name}} 创建（未在运行，故显示在顶层）",
+      "created_by_closed": "由 {{name}} 创建（已关闭）",
       "credits": "额度",
       "done": "完成",
       "expand_sessions": "展开 {{name}} 下的会话",

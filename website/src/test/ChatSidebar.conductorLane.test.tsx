@@ -606,6 +606,29 @@ describe('chat sidebar — conductor lane', () => {
     expect(hint.textContent).toBe('')
   })
 
+  it('nests a worker whose conductor closed under the lead, and still says the conductor is gone', () => {
+    /* The case the lane kept getting wrong: a lead opens a conductor, the conductor
+       opens the workers, the conductor is closed. The backend resolves `key` to the
+       nearest ancestor still open and marks the edge `ancestor`, so the workers hang
+       off the lead instead of scattering to the top level -- and each one keeps the
+       closed-creator glyph, because `k-mid` really did open it and really is gone. */
+    localStorage.setItem('mc-sidebar-lane', 'conductor')
+    const { getByTestId } = renderSidebar([
+      { key: 'k-lead', title: 'Lead', messages: 1, running: false, modified: 3000 },
+      { key: 'k-worker', title: 'Worker', messages: 1, running: true, modified: 2000, parent: { slot: 'k-mid', key: 'k-lead', ancestor: true } },
+    ] as never)
+    const lane = getByTestId('conductor-view-lane')
+    expect(laneRows(lane)).toEqual(['k-lead', 'k-worker'])
+    const placed = lane.querySelector('[data-slot-key="k-worker"]')!.closest('[data-conductor-depth]')
+    expect(placed?.getAttribute('data-conductor-depth')).toBe('1')
+    // The citation names the CREATOR, not the ancestor it was placed under.
+    const hint = within(lane).getByTestId('conductor-orphan-k-worker')
+    expect(hint.getAttribute('data-orphan-of')).toBe('k-mid')
+    expect(hint.getAttribute('title')).toContain('k-mid')
+    // And not the other glyph: that one says the creator is open and merely hidden.
+    expect(within(lane).queryByTestId('conductor-cites-parent-k-worker')).toBeNull()
+  })
+
   it('nests an adopted session under its new parent, and its children with it', () => {
     /* The takeover, seen from the renderer. The payload's `parent` is whatever the
        backend fold decided -- an adoption changes that value and nothing else -- so the
@@ -858,6 +881,28 @@ describe('chat sidebar — conductor lane', () => {
     // forwards. Same query on the local twin as a control.
     fireEvent.change(getByPlaceholderText(/search/i), { target: { value: 'worker' } })
     expect(within(lane()).getByTestId('conductor-cites-parent-peer-1:k-w1')).toBeTruthy()
+  })
+
+  it('gives a peer worker whose conductor closed the closed-creator glyph, like a local one', () => {
+    /* The peer's own backend walked up to its lead and sent `ancestor`, and the hub
+       forwards it (`useInstanceSessions`). The lane must then read a peer row exactly
+       as it reads a local one: nested under the peer lead, wearing the glyph for the
+       conductor that is gone. Without the flag crossing, the row nests on the key and
+       the glyph disappears -- the peer's crew reads as sessions the lead opened
+       itself, and this lane disagrees with the peer's own sidebar about one fact. */
+    localStorage.setItem('mc-sidebar-lane', 'conductor')
+    localStorage.setItem('mc-sidebar-conductor-expanded', JSON.stringify(['peer-1:k-lead']))
+    const { getByTestId } = renderSidebar([
+      { key: 'k-lead', title: 'Peer lead', messages: 1, running: false, modified: 4000, peer_id: 'peer-1', row_identity: 'peer-1:k-lead' },
+      { key: 'k-w1', title: 'Peer worker', messages: 1, running: true, modified: 3000, peer_id: 'peer-1', row_identity: 'peer-1:k-w1', parent: { slot: 'k-mid', key: 'k-lead', ancestor: true } },
+    ] as never)
+    const lane = getByTestId('conductor-view-lane')
+    expect(laneRows(lane)).toEqual(['k-lead', 'k-w1'])
+    const placed = lane.querySelector('[data-slot-key="k-w1"]')!.closest('[data-conductor-depth]')
+    expect(placed?.getAttribute('data-conductor-depth')).toBe('1')
+    const hint = within(lane).getByTestId('conductor-orphan-peer-1:k-w1')
+    expect(hint.getAttribute('data-orphan-of')).toBe('k-mid')
+    expect(within(lane).queryByTestId('conductor-cites-parent-peer-1:k-w1')).toBeNull()
   })
 
   it('caps the indent past six levels and names the level in the tooltip', () => {

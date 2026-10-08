@@ -14516,6 +14516,7 @@
       "cpu_cores": "CPU（コア）",
       "cpu_cores_hint": "プロセッサー使用量をCPUコア数で測定（パーセントではありません）。1.00は1コアが完全に飽和していることを意味します。",
       "created_by": "{{name}} が作成（実行されていないため、トップレベルに表示）",
+      "created_by_closed": "{{name}} が作成（終了済み）",
       "credits": "クレジット",
       "done": "完了",
       "expand_sessions": "{{name}} のセッションを展開する",

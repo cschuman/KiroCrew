@@ -14763,6 +14763,7 @@
       "cpu_cores": "CPU (Kerne)",
       "cpu_cores_hint": "Prozessorauslastung in CPU-Kernen gemessen, nicht in Prozent. Ein Wert von 1,00 bedeutet, dass ein kompletter Kern ausgelastet ist.",
       "created_by": "Erstellt von {{name}} (läuft nicht, daher auf oberster Ebene gezeigt)",
+      "created_by_closed": "Erstellt von {{name}} (geschlossen)",
       "credits": "Credits",
       "done": "Fertig",
       "expand_sessions": "Sitzungen unter {{name}} einblenden",

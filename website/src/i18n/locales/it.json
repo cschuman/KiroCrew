@@ -15010,6 +15010,7 @@
       "cpu_cores": "CPU (core)",
       "cpu_cores_hint": "Utilizzo del processore misurato in core CPU, non in percentuale. Un valore di 1,00 significa che un core è completamente saturo.",
       "created_by": "Creata da {{name}} (non in esecuzione, quindi mostrata al primo livello)",
+      "created_by_closed": "Creata da {{name}} (chiusa)",
       "credits": "Crediti",
       "done": "Fatto",
       "expand_sessions": "Mostra le sessioni di {{name}}",
