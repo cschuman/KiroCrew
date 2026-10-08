@@ -589,15 +589,31 @@ def cli_path() -> str | None:
     hit is inspected only after every vetted location misses, so the refusal can
     name the planted shim without ever running it.
     """
+    resolved, first_refusal = _resolve_cli_candidate()
+    if first_refusal is not None:
+        _warn_cli_refusal(*first_refusal)
+    return str(resolved) if resolved is not None else None
+
+
+def _resolve_cli_candidate() -> tuple[Path | None, tuple[Path, str] | None]:
+    """Resolve the trusted launcher and the first refused candidate, if any.
+
+    Returns ``(resolved, first_refusal)``. ``resolved`` is the canonical trusted
+    path or ``None``; ``first_refusal`` names the first candidate that existed on
+    disk or ``PATH`` but was declined as an untrusted source, or ``None`` when no
+    launcher spelling was present at all. Detection is identity-only -- the same
+    ``os.path.lexists`` / ``shutil.which`` probing and reason computation
+    :func:`cli_path` already performed -- so no launcher is executed, copied, or
+    trusted here. Both the resolver and :func:`legacy_launcher_refused` read this
+    one scan, so the two can never drift apart.
+    """
     first_refusal: tuple[Path, str] | None = None
     for candidate in _managed_cli_candidates():
         if not os.path.lexists(candidate):
             continue
         resolved, reason = _managed_candidate(candidate)
         if resolved is not None:
-            if first_refusal is not None:
-                _warn_cli_refusal(*first_refusal)
-            return str(resolved)
+            return resolved, first_refusal
         if reason is not None and first_refusal is None:
             first_refusal = (candidate, reason)
     for candidate in _system_cli_candidates():
@@ -605,9 +621,7 @@ def cli_path() -> str | None:
             continue
         resolved, reason = _system_candidate(candidate)
         if resolved is not None:
-            if first_refusal is not None:
-                _warn_cli_refusal(*first_refusal)
-            return str(resolved)
+            return resolved, first_refusal
         if reason is not None and first_refusal is None:
             first_refusal = (candidate, reason)
 
@@ -623,9 +637,22 @@ def cli_path() -> str | None:
                 candidate,
                 reason or "the candidate came from PATH, which is not a trusted launcher source",
             )
-    if first_refusal is not None:
-        _warn_cli_refusal(*first_refusal)
-    return None
+    return None, first_refusal
+
+
+def legacy_launcher_refused() -> bool:
+    """Whether a ``playwright-cli`` launcher is present but declined as untrusted.
+
+    ``True`` when a launcher spelling exists under a managed/system location or on
+    ``PATH`` yet none resolved to a trusted source -- the state a host is in when
+    a ``~/.local/bin`` or version-manager install sits outside the managed prefix
+    and so is intentionally not run. The check is identity-only
+    (:func:`_resolve_cli_candidate`): it never executes, copies, or trusts the
+    detected launcher. ``False`` both when a trusted launcher resolves and when
+    nothing is installed at all.
+    """
+    resolved, first_refusal = _resolve_cli_candidate()
+    return resolved is None and first_refusal is not None
 
 
 def _first_version(text: str) -> str | None:

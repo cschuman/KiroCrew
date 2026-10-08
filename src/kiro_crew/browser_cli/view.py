@@ -58,6 +58,7 @@ from kiro_crew.browser_cli.install import (
     cli_path,
     installed_cli_version,
     kill_cli_process_tree,
+    legacy_launcher_refused,
 )
 from kiro_crew.browser_cli.launch import ui_socket_env
 
@@ -65,6 +66,21 @@ logger = logging.getLogger(__name__)
 
 # Loopback IPv4, as a constant rather than a parameter. See property 3 above.
 LOOPBACK_HOST = "127.0.0.1"
+
+#: Reason shown when no ``playwright-cli`` launcher is present at all.
+CLI_NOT_INSTALLED_REASON = "playwright-cli is not installed"
+
+#: Reason shown when a launcher IS present but was declined as an untrusted
+#: source -- the state an upgrade across the managed-install migration leaves a
+#: host in. It explains that the one-time managed reinstall is needed, so the
+#: user is not told "not installed" when they do have a (legacy) install. The
+#: dashboard renders this string verbatim, so it must stay plain and complete.
+CLI_LEGACY_UNTRUSTED_REASON = (
+    "playwright-cli needs a one-time reinstall. An earlier install on your PATH "
+    "(for example under ~/.local/bin or a version manager such as nvm, mise, or "
+    "Volta) is no longer run for safety; reinstall the browser tools from the "
+    "dashboard to use the managed copy."
+)
 
 # The server binds, starts Node, and initializes before it answers, so the
 # readiness gate is a poll rather than a single probe.
@@ -1952,7 +1968,11 @@ def status() -> dict[str, Any]:
                 "status": "unavailable",
                 "url": None,
                 "port": None,
-                "reason": "playwright-cli is not installed",
+                "reason": (
+                    CLI_LEGACY_UNTRUSTED_REASON
+                    if legacy_launcher_refused()
+                    else CLI_NOT_INSTALLED_REASON
+                ),
             }
         if _recorded_state() is True and _child is not None and _child.info is not None:
             return {
