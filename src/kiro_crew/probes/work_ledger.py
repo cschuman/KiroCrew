@@ -33,11 +33,13 @@ to remove.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import logging
 from typing import Callable
 
 from kiro_crew import irq, ledger_wake, work_ledger
+from kiro_crew.work_vocab import WORK_BLOCKED_REASONS, WORK_REASON_STATUSES
 
 logger = logging.getLogger(__name__)
 
@@ -362,6 +364,59 @@ def has_open_items(conductor_key: str) -> bool:
     except Exception:  # noqa: BLE001 - a read fault must leave the bound in force
         logger.debug("work-ledger probe: open-items read failed for %s", conductor_key)
         return False
+
+
+def person_wait_fingerprint(
+    conductor_key: str, *, worker_closed: Callable[[str], bool] | None = None
+) -> str | None:
+    """The ledger's fingerprint when every open item waits on a person, else ``None``.
+
+    What the AutoNudge timer asks before a work-ledger watch spends a turn: an open
+    item that is ``blocked`` or ``question`` with a ``reason`` of ``approval`` or
+    ``needs_human`` cannot move until someone acts, and when every open item is one,
+    the patrol has nothing to read that its last turn did not. The fingerprint hashes
+    the header, every item record and each item's newest event id, so a write that
+    changes a record or appends an event -- a worker's report, a conductor's decide,
+    close or accept -- changes it, and the timer holds only while it is unchanged.
+
+    An item whose worker session is gone (*worker_closed*) is not a wait on a person:
+    nobody is left to answer its approval, so the patrol must run and the probe's
+    stall wake must reach the conductor.
+
+    Positive evidence only, like :func:`has_open_items`: no open item, a torn item
+    file, an unreadable header or a read that raises all answer ``None``, so doubt
+    leaves the loop firing as it always has. Blocking file reads; call it off-loop.
+    """
+    try:
+        record = work_ledger.read_conductor(conductor_key)
+        if record is None:
+            return None
+        items = work_ledger.list_work_items(conductor_key)
+        stored = sum(1 for _ in work_ledger.items_dir(conductor_key).glob("it_*.json"))
+        if stored > len(items):
+            return None
+        open_items = [item for item in items if not item.is_terminal]
+        if not open_items:
+            return None
+        if not all(
+            item.status in WORK_REASON_STATUSES and item.reason in WORK_BLOCKED_REASONS
+            for item in open_items
+        ):
+            return None
+        closed = worker_closed or _always_open
+        if any(closed(item.worker_session_key or "") for item in open_items):
+            return None
+        rows = []
+        for item in sorted(items, key=lambda it: it.item_id):
+            newest = work_ledger.read_events(conductor_key, item.item_id, limit=1)
+            rows.append({**item.to_dict(), "_newest_event": newest[-1].id if newest else ""})
+        board = {"conductor": record.to_dict(), "items": rows}
+        return hashlib.sha256(
+            json.dumps(board, sort_keys=True, ensure_ascii=False).encode("utf-8")
+        ).hexdigest()[:32]
+    except Exception:  # noqa: BLE001 - a read fault must never hold a patrol
+        logger.debug("work-ledger probe: person-wait read failed for %s", conductor_key)
+        return None
 
 
 def _conductor_key(raw: object) -> str:

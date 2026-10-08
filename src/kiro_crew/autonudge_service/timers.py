@@ -317,6 +317,9 @@ def notify_cycle_start_failed(self: AutoNudgeService, slot_key: str) -> None:
     if not loop or not loop.active:
         return
     loop.consecutive_start_failures += 1
+    # The conductor never read the ledger on this cycle, so the person-wait hold
+    # must not treat it as seen: the next tick fires and tries again.
+    loop.ledger_seen_fp = ""
     logger.warning(
         "AutoNudge: loop %s's cycle never got a model session "
         "(%d consecutive); it will back off at %d and stand down at %d",
@@ -416,6 +419,9 @@ async def notify_cycle_failed(
         #     the cancellation propagate with the increment intact.
         prior = loop.consecutive_failed_cycles
         loop.consecutive_failed_cycles = prior + 1
+        # A failed turn read nothing, so the person-wait hold must not count its
+        # ledger as seen; in memory only -- losing it on a restart costs one turn.
+        loop.ledger_seen_fp = ""
         try:
             # ``_write_monitor_snapshot_locked`` offloads the fsyncing
             # ``_write_state`` to a worker thread and ABSORBS cancellation until

@@ -320,6 +320,15 @@ Each cycle:
 
    `blocked` and `question` differ by who must act. That is why they are separate
    values, and why you must not treat one as the other.
+
+   A `blocked` or `question` row may also carry the worker's `reason`: `approval`
+   (a tool approval timed out) or `needs_human` (only a person can unblock it).
+   No reason means the item moves on its own (a build, a service). Tell your workers to
+   report `blocked` with `reason=approval` the moment a tool approval times out.
+   When every open item waits on a person (`approval` or `needs_human`), put the
+   ask in front of the user on that turn: your patrol then holds, takes no
+   turns and does not extend, and the goal popover shows it waiting on the user.
+   Any change to the ledger, a worker's report or your own write, releases it.
 3. **Verify every `done` with the evaluator — never by reading the child's
    transcript and judging, and never by believing the claim.** Take the
    `accept_batch` from a full `work_ledger_read` (no `compact`), **keep only the entries

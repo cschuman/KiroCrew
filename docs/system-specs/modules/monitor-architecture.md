@@ -244,6 +244,26 @@ user or agent stop. The runaway backstop is the same
 `created_ts`: past it nothing is extended, the bound stops the loop as before,
 and the refusal is logged at WARNING.
 
+A work-ledger watch also HOLDS while every open item waits on a person: each is
+`blocked` or `question` with the worker's `reason` `approval` or `needs_human`,
+no item's worker session is gone, and the ledger's fingerprint
+(`probes.work_ledger.person_wait_fingerprint`: the header, every item record and
+each item's newest event id) equals `ledger_seen_fp`, the one read at the tick
+that delivered the loop's last turn. `_holds_for_person_wait` checks this in
+`_timer` ahead of the cycle cap and the runtime budget, so a held tick fires
+nothing, reaches no probe gate or quiet floor, and is neither extended nor
+stopped; it re-arms at the loop's interval and sets `waiting_on_person` (with
+`waiting_on_person_at`), which `monitor_inspect`, the REST row and the
+`autonudge_state` frame carry. Any write to the ledger changes the fingerprint
+and releases it on the next tick; a manual fire clears `ledger_seen_fp` so it
+is never held; a loop already held for an unanswered approval is left to that
+hold. On release the held time is added to `created_ts`, as the approval hold
+does, so it spends neither the runtime budget nor the backstop. That exemption
+is on purpose and matches the approval hold: a held loop fires nothing, so a
+patrol whose people never answer stays a paused row that costs one ledger read
+per interval, never a runaway. Doubt fires: an unreadable ledger or a fresh loop
+never holds.
+
 An unanswered tool approval HOLDS a prompt loop rather than stopping it: it
 stays active, fires nothing and spends neither bound, and it resumes on its own
 once a person answers an approval, types into the dashboard session or presses
