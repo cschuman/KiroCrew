@@ -19,10 +19,10 @@ _LOGGER = "kiro_crew.skills"
 
 
 @pytest.fixture(autouse=True)
-def _isolated(tmp_path, monkeypatch):
-    monkeypatch.setenv("KIROCREW_HOME", str(tmp_path / "home"))
+def _isolated(tmp_path, _floor_monkeypatch):
+    _floor_monkeypatch.setenv("KIROCREW_HOME", str(tmp_path / "home"))
     skill_trust.reset_cache_for_tests()
-    monkeypatch.setattr(skills_mod, "_CHAIN_REFUSALS_WARNED", set())
+    _floor_monkeypatch.setattr(skills_mod, "_CHAIN_REFUSALS_WARNED", set())
     yield
     skill_trust.reset_cache_for_tests()
 
