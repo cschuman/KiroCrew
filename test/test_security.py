@@ -6629,6 +6629,30 @@ class TestAdaptiveHomeTargetsExpiry:
             == 5.0
         )
 
+        # The ceiling is the measurement, not generous headroom: the committed
+        # sweep's largest serveable expiry was 54.4s, so a value at or below that
+        # is honoured while one above the measured maximum is refused back to the
+        # reviewed default. A value in (measured max, old headroom] -- e.g. 120s,
+        # which the prior 300s ceiling admitted -- must now be refused.
+        assert security.paths._TTL_MAX_SECS_MAX == pytest.approx(60.0)
+        monkeypatch.setenv(security._TTL_MAX_SECS_ENV, "54.4")
+        assert security._env_float(
+            security._TTL_MAX_SECS_ENV,
+            security.paths._TTL_MAX_SECS_DEFAULT,
+            security.paths._TTL_MAX_SECS_MIN,
+            security.paths._TTL_MAX_SECS_MAX,
+        ) == pytest.approx(54.4)
+        monkeypatch.setenv(security._TTL_MAX_SECS_ENV, "120")
+        assert (
+            security._env_float(
+                security._TTL_MAX_SECS_ENV,
+                security.paths._TTL_MAX_SECS_DEFAULT,
+                security.paths._TTL_MAX_SECS_MIN,
+                security.paths._TTL_MAX_SECS_MAX,
+            )
+            == security.paths._TTL_MAX_SECS_DEFAULT
+        ), "a value above the measured maximum must fall back to the default"
+
     def test_a_bad_knob_value_keeps_the_reviewed_default(self, monkeypatch) -> None:
         """Absent, unparseable and out-of-range all fall back to the default.
 
