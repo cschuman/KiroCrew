@@ -1991,7 +1991,14 @@ source is most appropriate:
    and tail nothing.
 4. `~/.kiro/crew/gateway.log` for foreground gateways
 
-`gateway.log` itself is opened by `cli._setup_cli_logging`. A foreground gateway
+`gateway.log` itself is opened by `cli._setup_cli_logging`. Only the `gateway`
+command rotates it (2 MiB, three backups). Every other process that logs there —
+the `mcp-*` stdio servers, `kirocrew chat`, short CLI verbs — writes through
+`_AppendOnlyLogFileHandler`, which opens the file for one record, closes it again
+and never rotates. Windows refuses to rename a file while another process holds
+it open, so a child that kept its own handle for its lifetime made every gateway
+rollover fail. A gateway whose boot rotation to `gateway.log.prev` fails logs one
+warning and keeps appending to the previous run's file. A foreground gateway
 whose log file cannot be opened warns and continues with console logging only; a
 detached gateway, whose stdout and stderr point at that file, raises instead. If a
 size rollover's reopen fails, the detached handler prints its first traceback only,
