@@ -3653,6 +3653,16 @@ capability check, not a best-effort `lstat` sequence; a pre-check followed by a 
 scan leaves the same swap window. Project skills remain available on macOS and Linux,
 where every traversed component stays pinned to a no-follow directory descriptor.
 
+Neither refusal is silent. On an unsupported platform the loader logs one WARNING per
+process (unless `skills.project_skills_enabled` is off) naming the platform limit, and
+the enforcement audit's reason says the platform lacks the traversal rather than "no
+grant"; the warning names no project, because checking whether `.kiro/skills` exists
+would be the path lookup the gate refuses to make. On POSIX, a component the no-follow
+chain refuses is logged as a WARNING naming that component (a symlinked directory and a
+file both read as "a symlink or not a directory", since Linux reports both with
+the same errno), once per (base, component, errno) per process; a missing component,
+the ordinary no-`.kiro/skills` case, stays at DEBUG.
+
 **One enforcement point for every enumerated read.** Enumeration is cached, and now
 also PERSISTED across processes (see *The catalog snapshot*), so a path vetted while
 genuine can be replaced by a link out of the granted directory before anything reads

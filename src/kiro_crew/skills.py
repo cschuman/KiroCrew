@@ -20,6 +20,7 @@ import asyncio
 import base64
 import csv
 import difflib
+import errno
 import functools
 import hashlib
 import hmac
@@ -981,6 +982,48 @@ _PROJECT_DIR_OPEN_FLAGS = (
 )
 
 
+#: (base, refused component, errno) triples already warned about, so a project
+#: whose chain is refused is named once per process rather than on every catalog
+#: build. Bounded: past the cap the warning is still emitted, just not recorded.
+_CHAIN_REFUSALS_WARNED: set[tuple[str, str, int]] = set()
+_CHAIN_REFUSALS_WARNED_CAP = 256
+
+
+def _note_chain_refusal(base: Path, component: str, exc: OSError) -> None:
+    """Say which component of a project skills path the no-follow walk refused.
+
+    A missing component is the ordinary case (most projects have no
+    ``.kiro/skills``) and stays at DEBUG. Anything else -- a symlinked
+    directory (refused by ``O_NOFOLLOW``), a file where a directory was
+    expected, a permission denial -- means the operator's skills exist but will
+    never load, and the remedy is to inspect that one path, so it is a WARNING
+    naming it.
+    """
+    err = exc.errno or 0
+    if err == errno.ENOENT:
+        logger.debug("project skills path has no %r component: %s", component, base)
+        return
+    marker = (str(base), component, err)
+    if marker in _CHAIN_REFUSALS_WARNED:
+        return
+    if len(_CHAIN_REFUSALS_WARNED) < _CHAIN_REFUSALS_WARNED_CAP:
+        _CHAIN_REFUSALS_WARNED.add(marker)
+    # O_DIRECTORY | O_NOFOLLOW reports a symlink as ELOOP or ENOTDIR depending
+    # on the kernel, the same ENOTDIR a regular file gets, so name both.
+    if err in (errno.ELOOP, errno.ENOTDIR):
+        reason = "is a symlink or not a directory"
+    else:
+        reason = f"could not be opened ({exc.strerror or f'errno {err}'})"
+    logger.warning(
+        "project skills under %s are not loaded: path component %r %s; project "
+        "skills are walked without following links, so this component must be "
+        "a real, readable directory",
+        base,
+        component,
+        reason,
+    )
+
+
 def _open_project_dir_chain(base: Path) -> int | None:
     """Open every absolute path component through the prior no-follow handle."""
     if not skill_trust.project_skill_traversal_supported():
@@ -988,13 +1031,15 @@ def _open_project_dir_chain(base: Path) -> int | None:
     parts = Path(os.path.abspath(base)).parts
     try:
         fd = os.open(parts[0], _PROJECT_DIR_OPEN_FLAGS)
-    except OSError:
+    except OSError as exc:
+        _note_chain_refusal(base, parts[0], exc)
         return None
     for part in parts[1:]:
         try:
             next_fd = os.open(part, _PROJECT_DIR_OPEN_FLAGS, dir_fd=fd)
-        except OSError:
+        except OSError as exc:
             os.close(fd)
+            _note_chain_refusal(base, part, exc)
             return None
         os.close(fd)
         fd = next_fd
@@ -2714,6 +2759,9 @@ class SkillsLoader:
         # (canonical key, allowed) pairs already audited, so the enforcement
         # record is written on first use rather than once per message.
         self._audited_projects: set[tuple[str, bool]] = set()
+        # Whether the unsupported-platform warning has been considered, so it
+        # is logged at most once per loader rather than once per message.
+        self._project_skills_unsupported_warned = False
         # Extra skill paths from config (config injectable for testing)
         cfg = config or KiroCrewConfig.load()
         # The per-message trigger cap is resolved at USE from the live snapshot
@@ -2931,6 +2979,26 @@ class SkillsLoader:
             return ""
         key = skill_trust.canonical_key(project_dir)
         allowed = key is not None and skill_trust.is_key_trusted(key)
+        if (
+            not allowed
+            and not self._project_skills_unsupported_warned
+            and not skill_trust.project_skill_traversal_supported()
+        ):
+            # Without the no-follow directory-descriptor walk (Windows) the gate
+            # refuses every project before touching its path, so the operator
+            # otherwise sees no skills, no trust prompt and no reason. Name the
+            # platform limit, not a project: probing whether `.kiro/skills`
+            # exists would be the very path lookup the gate refuses to make.
+            # Once per loader, and silent when the operator switched it off.
+            self._project_skills_unsupported_warned = True
+            if skill_trust.project_skills_enabled():
+                logger.warning(
+                    "project skills (<project>/.kiro/skills) are not loaded on this "
+                    "platform: it lacks the no-follow directory-descriptor traversal "
+                    "the project-skill trust gate requires, so no project can be "
+                    "trusted here and no trust prompt is offered; global skills are "
+                    "unaffected"
+                )
         self._audit_project_skill_enforcement(project_dir, key, allowed)
         if not allowed:
             return ""
@@ -2972,7 +3040,12 @@ class SkillsLoader:
                 reason=(
                     "project skills admitted for a granted directory"
                     if allowed
-                    else "project skills withheld: no grant, or the feature is off"
+                    else (
+                        "project skills withheld: this platform lacks no-follow "
+                        "directory traversal"
+                        if not skill_trust.project_skill_traversal_supported()
+                        else "project skills withheld: no grant, or the feature is off"
+                    )
                 ),
                 critical=False,
             )
