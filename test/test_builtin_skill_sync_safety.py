@@ -1320,3 +1320,105 @@ class TestMarkerNameCollision:
 
         assert "packaged" in (base / "deploy" / "SKILL.md").read_text(encoding="utf-8")
         assert not list(base.glob(".deploy.user-backup*"))
+
+
+def _inject_on_trigger_off(dest_dir: Path) -> bool:
+    """Does the installed SKILL.md carry the budget-switch opt-out?
+
+    Mirrors how the loader reads it (`_dest_opted_out_of_injection`): a
+    top-level ``inject_on_trigger: false`` frontmatter line.
+    """
+    from kiro_crew.frontmatter import SKILL_LOADER, parse_frontmatter
+
+    meta = parse_frontmatter((dest_dir / "SKILL.md").read_text(encoding="utf-8"), SKILL_LOADER)
+    return str(meta.get("inject_on_trigger", "")).strip().lower() == "false"
+
+
+class TestContextBudgetSwitchSurvivesUpdate:
+    """The per-skill Context-budget switch must survive a Kiro Crew update.
+
+    The switch is the one user-mutable setting on a built-in skill: turning it
+    off writes ``inject_on_trigger: false`` into the installed SKILL.md
+    (``set_inject_on_trigger``). An update ships a packaged SKILL.md that never
+    carries that line, so a naive reinstall turns full-body injection back on —
+    the switch reverting itself behind an unrelated app update.
+    The sync must carry the opt-out onto the freshly installed copy.
+    """
+
+    def test_opt_out_survives_a_builtin_update(self, builtin_root: Path, base: Path) -> None:
+        # Install v1, user flips the Context-budget switch OFF (what the
+        # dashboard does: writes the one frontmatter line), then a v2 ships.
+        src = _make_skill(builtin_root, "web-verify", "v1")
+        _ensure_builtin_skills(base)
+        dest_md = base / "web-verify" / "SKILL.md"
+        dest_md.write_text(
+            dest_md.read_text(encoding="utf-8").replace(
+                "\n---\n", "\ninject_on_trigger: false\n---\n", 1
+            ),
+            encoding="utf-8",
+        )
+        assert _inject_on_trigger_off(base / "web-verify")
+
+        (src / "SKILL.md").write_text(
+            "---\nname: web-verify\ndescription: v2\n---\nv2 body\n", encoding="utf-8"
+        )
+        _bump_mtime(src / "SKILL.md")
+        _ensure_builtin_skills(base)
+
+        # The packaged v2 body is installed AND the switch is still off.
+        installed = (base / "web-verify" / "SKILL.md").read_text(encoding="utf-8")
+        assert "v2 body" in installed
+        assert _inject_on_trigger_off(base / "web-verify")
+
+    def test_carried_opt_out_is_the_provenance_baseline(
+        self, builtin_root: Path, base: Path
+    ) -> None:
+        # After the carry, the recorded fingerprint must describe the tree AS
+        # INSTALLED (with the opt-out line). Otherwise the very next sync reads
+        # the carried line as a divergence and quarantines the skill on every
+        # startup — a slow leak of junk backups and a re-triggered reset risk.
+        src = _make_skill(builtin_root, "web-verify", "v1")
+        _ensure_builtin_skills(base)
+        dest_md = base / "web-verify" / "SKILL.md"
+        dest_md.write_text(
+            dest_md.read_text(encoding="utf-8").replace(
+                "\n---\n", "\ninject_on_trigger: false\n---\n", 1
+            ),
+            encoding="utf-8",
+        )
+        (src / "SKILL.md").write_text(
+            "---\nname: web-verify\ndescription: v2\n---\nv2 body\n", encoding="utf-8"
+        )
+        _bump_mtime(src / "SKILL.md")
+        _ensure_builtin_skills(base)
+
+        marker = base / "web-verify" / _PROVENANCE_MARKER
+        recorded = marker.read_text(encoding="utf-8").strip()
+        expected = _skill_tree_fingerprint(base / "web-verify")
+        assert recorded == f"{skills_mod._PROVENANCE_FORMAT}:{expected}"
+
+        # The update that carried the opt-out legitimately preserved the old
+        # toggled tree as user data (one backup). The follow-up sync with the
+        # SAME package must then be a steady state: no NEW quarantine minted,
+        # the switch still off. Count backups before and after to prove the
+        # carried line is the recorded baseline, not a per-startup divergence.
+        backups_before = sorted(p.name for p in base.glob(".web-verify.user-backup*"))
+        _ensure_builtin_skills(base)
+        backups_after = sorted(p.name for p in base.glob(".web-verify.user-backup*"))
+        assert _inject_on_trigger_off(base / "web-verify")
+        assert backups_after == backups_before
+
+    def test_switch_on_default_is_not_rewritten(self, builtin_root: Path, base: Path) -> None:
+        # The carry fires ONLY when the user had opted out. An ordinary update
+        # of an untouched builtin installs the packaged SKILL.md verbatim —
+        # no stray inject_on_trigger line appended.
+        src = _make_skill(builtin_root, "web-verify", "v1")
+        _ensure_builtin_skills(base)
+        (src / "SKILL.md").write_text(
+            "---\nname: web-verify\ndescription: v2\n---\nv2 body\n", encoding="utf-8"
+        )
+        _bump_mtime(src / "SKILL.md")
+        _ensure_builtin_skills(base)
+
+        installed = (base / "web-verify" / "SKILL.md").read_text(encoding="utf-8")
+        assert "inject_on_trigger" not in installed

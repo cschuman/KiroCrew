@@ -2124,6 +2124,68 @@ def _linked_component(base: Path, name: str) -> Path | None:
     return None
 
 
+def _dest_opted_out_of_injection(dest_dir: Path) -> bool:
+    """Did the user flip the Context-budget switch OFF on this installed builtin?
+
+    The switch writes ``inject_on_trigger: false`` into the installed
+    ``SKILL.md`` frontmatter (``skill_runtime.authoring.set_inject_on_trigger``),
+    the one user-mutable setting on a built-in skill. Read it from the
+    destination BEFORE the update claims the directory, so the opt-out can be
+    carried onto the freshly installed packaged copy.
+
+    Returns False on any read/parse failure: a carry is a best-effort
+    convenience, never a reason to abort an install. Only a top-level
+    ``inject_on_trigger: false`` counts, matching the writer and
+    ``_parse_frontmatter`` (an indented occurrence is prose, not the setting).
+    """
+    skill_file = dest_dir / "SKILL.md"
+    try:
+        content = safe_read_file(str(skill_file))
+    except (OSError, PermissionError, ValueError):
+        return False
+    try:
+        meta = parse_frontmatter(content, SKILL_LOADER)
+    except (OSError, ValueError):
+        return False
+    return str(meta.get("inject_on_trigger", "")).strip().lower() == "false"
+
+
+def _carry_injection_opt_out(dest_dir: Path) -> None:
+    """Re-apply ``inject_on_trigger: false`` onto a just-installed builtin.
+
+    Mirrors ``skill_runtime.versions._rewrite_update_frontmatter`` and the
+    auto-skill refine path: a packaged ``SKILL.md`` never carries the switch, so
+    an update that reinstalls it would silently turn full-body injection back on
+    for a skill the user had made pointer-only — the setting reverting itself
+    behind an unrelated app update. Append the one frontmatter
+    line the user set, leaving the rest of the packaged body authoritative.
+
+    Best-effort: a frontmatter-less or unreadable packaged file is left as-is
+    rather than failing the sync. The caller re-fingerprints afterwards so the
+    carried line is the recorded baseline, not a divergence the next update
+    would quarantine.
+    """
+    skill_file = dest_dir / "SKILL.md"
+    try:
+        content = skill_file.read_text(encoding="utf-8")
+    except (OSError, ValueError):
+        return
+    m = re.match(r"^---\n(.*?)\n---\n?(.*)$", content, re.DOTALL)
+    if not m:
+        return
+    fm_lines = [
+        ln for ln in m.group(1).split("\n") if not ln.lower().startswith("inject_on_trigger:")
+    ]
+    fm_lines.append("inject_on_trigger: false")
+    new_content = "---\n" + "\n".join(fm_lines) + "\n---\n" + m.group(2)
+    try:
+        atomic_write(skill_file, new_content)
+    except OSError:
+        logger.warning(
+            "could not carry inject_on_trigger opt-out onto %s", skill_file, exc_info=True
+        )
+
+
 def _ensure_builtin_skills(base: Path) -> None:
     """Sync built-in skills: copy new/updated, remove known-stale ones.
 
@@ -2167,6 +2229,9 @@ def _ensure_builtin_skills(base: Path) -> None:
             src_dir = src_file.parent
             dest_dir = base / name
             dest_file = dest_dir / "SKILL.md"
+            # Set only when a diverged destination carried the user's
+            # Context-budget opt-out; re-applied after the packaged copy lands.
+            carry_opt_out = False
             # The manifest's own mtime is not a proxy for the skill's: a
             # release that only changes ``scripts/`` leaves ``SKILL.md``
             # byte-identical with its packaged mtime, so a manifest-only
@@ -2204,6 +2269,12 @@ def _ensure_builtin_skills(base: Path) -> None:
                         _write_provenance_marker(dest_dir, adopted)
                 continue
             if dest_dir.exists() or is_link_or_junction(dest_dir):
+                # The Context-budget switch is the one user-mutable setting on a
+                # built-in skill; read it off the destination now, before the
+                # claim renames it away, so it can be carried onto the packaged
+                # copy below. A diverged tree is otherwise quarantined whole and
+                # the setting lost.
+                carry_opt_out = _dest_opted_out_of_injection(dest_dir)
                 claim = _claim_dir_for_replacement(dest_dir)
                 if claim is None:
                     continue
@@ -2274,7 +2345,26 @@ def _ensure_builtin_skills(base: Path) -> None:
             # later chmod on the installed copy (including removing
             # any owner-rwx bit) still diverges.
             ensure_owner_rwx_dirs(dest_dir)
-            if src_fingerprint is not None:
+            if carry_opt_out:
+                # The user had turned this built-in skill's Context-budget
+                # switch off; the packaged copy ships it on. Re-apply the
+                # opt-out, then record the fingerprint of the RESULTING tree
+                # (not the packaged source's) so the carried line reads as the
+                # installed baseline instead of a divergence the next update
+                # would quarantine.
+                _carry_injection_opt_out(dest_dir)
+                carried_fingerprint = _skill_tree_fingerprint(dest_dir)
+                if carried_fingerprint is not None:
+                    _write_provenance_marker(dest_dir, carried_fingerprint)
+                else:
+                    logger.warning(
+                        "installed skill tree %s cannot be fingerprinted after "
+                        "carrying the inject_on_trigger opt-out; installed "
+                        "%s without provenance",
+                        dest_dir,
+                        name,
+                    )
+            elif src_fingerprint is not None:
                 _write_provenance_marker(dest_dir, src_fingerprint)
             else:
                 logger.warning(

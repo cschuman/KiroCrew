@@ -3522,6 +3522,18 @@ surface, the seams and these placement rules.
 
 **Source precedence** (project-level wins): `$KIROCREW_PROJECT_DIR/skills/` → `builtin_skills/` (bundled). Auto-copied to `~/.kiro/crew/skills/` on first run. Copies entire skill directories (scripts, assets, etc.).
 
+**The Context-budget switch survives updates.** `inject_on_trigger: false` is the
+one user-mutable setting on a built-in skill, written into the installed
+`SKILL.md` by `set_inject_on_trigger`. A packaged `SKILL.md` never carries it, so
+`_ensure_builtin_skills` reads the opt-out off the destination before it claims the
+diverged tree for replacement, then re-applies it onto the freshly installed copy
+and records the fingerprint of the RESULTING tree as the provenance baseline — so
+the carried line is not read as a divergence the next update quarantines. Without
+this carry an update turns full-body injection back on behind the user's back,
+the same reversion the auto-skill refine (`skill_runtime.auto_skills`)
+and update-approval (`skill_runtime.versions._rewrite_update_frontmatter`) paths
+already guard against on their own rewrites.
+
 **Retired generated skill cleanup.** `skills.remove_retired_conductor_skill()`
 removes `skills/conductor/SKILL.md` only when a descriptor-pinned, capped read has
 a CRLF-normalized SHA-256 matching one of the static generator outputs. Linked
