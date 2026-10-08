@@ -523,6 +523,18 @@ re-check `runtime.active_names` after the CLI returns and fail closed
 (`pod not active after start` / `pod still active after shutdown`) — a CLI exit 0
 is never taken as proof of the state change, in either direction.
 
+### Per-pod env file encoding
+
+The per-pod env file is hand-editable, so its readers accept what a Windows
+editor saves. `runtime.read_env_file` decodes it with the data home's `.env`
+decoder (`config.loader.decode_env_bytes`): a UTF-8 byte-order mark marks the
+file as UTF-8 and is dropped, so the first variable keeps its name, and a
+UTF-16 or UTF-32 file raises `PodError` telling the operator to save it as
+UTF-8. Returning `{}` there instead would launch the pod without the operator's
+variables and let `write_env_file` overwrite the file it could not read.
+`_parse_env_text` also drops a leading mark, for `runtime_ports._read_peer_env`,
+which decodes the bytes itself, and Dev Fleet's strict pin reader does the same.
+
 ### Pod runtime ownership
 
 Dev Fleet, the pod CLI and the pod test suite all reach the pod runtime as one
