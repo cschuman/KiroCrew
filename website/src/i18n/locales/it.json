@@ -6416,7 +6416,10 @@
       "split_down": "Dividi in basso",
       "split_right": "Dividi a destra",
       "split_right_d": "Dividi a destra (⌘D)",
-      "type_to_filter": "Digita per filtrare…"
+      "type_to_filter": "Digita per filtrare…",
+      "show_earlier_messages": "Mostra i messaggi precedenti",
+      "conversation_boundary": "Qui inizia la nuova conversazione",
+      "hide_earlier_messages": "Nascondi i messaggi precedenti"
     },
     "cliPanel": {
       "copied": "Copiato",
@@ -17742,7 +17745,18 @@
       "dashboard_unavailable": "Non e stato possibile caricare questa dashboard.",
       "dashboard_render_error": "Non e stato possibile disegnare questa dashboard.",
       "dashboard_frame_title": "Dashboard di {{crew}}",
-      "dashboard_rendering": "Disegno della dashboard…"
+      "dashboard_rendering": "Disegno della dashboard…",
+      "new_conversation": "Nuova conversazione",
+      "new_conversation_tooltip": "Avvia una nuova conversazione in questo thread",
+      "new_conversation_confirm_title": "Avviare una nuova conversazione con «{{name}}»?",
+      "new_conversation_confirm_body": "«{{name}}» riparte da zero: non ricorderà nulla di quanto detto in questa chat. Quello che ha salvato nella sua memoria rimane e tutti i messaggi precedenti restano qui sotto «Mostra i messaggi precedenti».",
+      "new_conversation_confirm_action": "Avvia una nuova conversazione",
+      "new_conversation_failed_title": "Non è stato possibile avviare una nuova conversazione",
+      "new_conversation_busy_tooltip": "Disponibile quando {{name}} avrà finito di lavorare",
+      "new_conversation_boundary_failed": "{{name}} ha dimenticato questa chat, ma la linea che segna l'inizio della nuova conversazione non è stata salvata, così i messaggi precedenti sembrano ancora attuali. Premi di nuovo Nuova conversazione per salvare la linea; anche quanto detto da allora verrà dimenticato.",
+      "new_conversation_boundary_failed_title": "Nuova conversazione avviata, linea non salvata",
+      "new_conversation_busy": "{{name}} sta gestendo un messaggio in questo momento. Riprova tra un attimo.",
+      "new_conversation_short": "Nuova"
     },
     "tasksCapacityCard": {
       "title": "Attività e capacità",

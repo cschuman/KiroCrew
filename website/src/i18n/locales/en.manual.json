@@ -2110,7 +2110,10 @@
       "history_load_failed": "Couldn't load this session's messages.",
       "retry": "Retry",
       "stop_failed": "Couldn't stop this turn ({{error}}). Press Stop again.",
-      "stop_failed_network": "Couldn't reach the server to stop this turn. Press Stop again."
+      "stop_failed_network": "Couldn't reach the server to stop this turn. Press Stop again.",
+      "show_earlier_messages": "Show earlier messages",
+      "conversation_boundary": "New conversation starts here",
+      "hide_earlier_messages": "Hide earlier messages"
     },
     "cliPanel": {
       "copied": "Copied",
@@ -8085,7 +8088,18 @@
       "failed_to_load_app": "Failed to load app"
     },
     "membersPage": {
-      "drawer_delegated_working": "Delegated work running"
+      "drawer_delegated_working": "Delegated work running",
+      "new_conversation": "New conversation",
+      "new_conversation_tooltip": "Start a fresh conversation on this thread",
+      "new_conversation_confirm_title": "Start a new conversation with “{{name}}”?",
+      "new_conversation_confirm_body": "“{{name}}” starts over: it will not remember anything said in this chat. What it has saved to its memory stays, and every earlier message stays right here under “Show earlier messages”.",
+      "new_conversation_confirm_action": "Start a new conversation",
+      "new_conversation_failed_title": "Couldn't start a new conversation",
+      "new_conversation_busy_tooltip": "Available once {{name}} finishes working",
+      "new_conversation_boundary_failed": "{{name}} has forgotten this chat, but the line marking where the new conversation starts was not saved, so the earlier messages still look current. Press New conversation again to save the line; anything said since will be forgotten too.",
+      "new_conversation_boundary_failed_title": "New conversation started, line not saved",
+      "new_conversation_busy": "{{name}} is handling a message right now. Try again in a moment.",
+      "new_conversation_short": "New"
     }
   },
   "privacyDisclosure": {

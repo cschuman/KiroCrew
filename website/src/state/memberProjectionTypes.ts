@@ -33,6 +33,13 @@ export interface RosterView {
   slot_key?: string
   last_active_ts?: number
   last_message?: string
+  /** Where each of this member's slots' CURRENT conversation begins, keyed by
+   *  slot key, as epoch ms: the instant the `slot/reset` entry recorded (its own
+   *  `ts`, which is when the conversation was discarded — NOT when its log line
+   *  was appended, which is later). The fold keeps the GREATEST such instant per
+   *  slot, so this value only ever moves forward. Absent for a slot that has
+   *  never been reset. */
+  conversation_starts?: { [slotKey: string]: { ts?: number } }
 }
 
 /** The 'activity' projection: recent participation records plus rolling counts. */
