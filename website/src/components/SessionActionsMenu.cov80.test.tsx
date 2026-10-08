@@ -109,6 +109,13 @@ describe('SessionActionsMenu', () => {
     expect(actions.close).toHaveBeenCalledWith('zzq-slot')
   })
 
+  it('shows a muted reach line under Close when the host passes closeHint', () => {
+    setup({ closeHint: 'Sessions under it stay open.' })
+    expect(screen.getByTestId('close-item-hint').textContent).toBe('Sessions under it stay open.')
+    fireEvent.click(btn(/Close session/))
+    expect(actions.close).toHaveBeenCalledWith('zzq-slot')
+  })
+
   it('wires Reload session to the slot and disables it while a turn runs', () => {
     const { unmount } = setup()
     fireEvent.click(btn('Reload session'))

@@ -23,7 +23,7 @@ import { useConnected } from '../hooks/useConnected'
 import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuSub, DropdownMenuSubTrigger, DropdownMenuSubContent } from '../components/ui/dropdown-menu'
 import { ContextMenu, ContextMenuTrigger, ContextMenuContent, ContextMenuItem, ContextMenuSeparator, ContextMenuSub, ContextMenuSubTrigger, ContextMenuSubContent } from '../components/ui/context-menu'
 import { offlineProps } from '../utils/offline'
-import { switchSlot, deleteSlot, fetchHistory, resumeFromHistory, deleteHistorySession, selectSidebarWorkflowActive, selectAutomationForSlot } from '../store/chatSlice'
+import { switchSlot, deleteSlot, fetchHistory, resumeFromHistory, deleteHistorySession, setCloseRefused, selectSidebarWorkflowActive, selectAutomationForSlot } from '../store/chatSlice'
 import { slotIsRemoteBound } from '../store/dashboardSlice'
 import { IS_MAC } from '../hooks/useKeyboardShortcuts'
 import { api, SEARCH_MIN_CHARS } from '../api/client'
@@ -843,6 +843,10 @@ const SessionRow = memo(function SessionRow({ view, actions }: SessionRowProps) 
     opensElsewhere, peerId, peerName,
   } = view
   const conductor = view.conductor
+  // A card with sessions under it says how far its ✕ reaches: this one session,
+  // never the ones it opened, which stay open and keep running.
+  const closeReachLabel = conductor && conductor.childCount > 0 ? i18nT('pages.chatSidebar.close_this_session_only') : undefined
+  const closeReachHint = conductor && conductor.childCount > 0 ? i18nT('pages.chatSidebar.close_keeps_children_hint') : undefined
   const {
     connected, mode, isMobile, colorMode, defaultAgent, installedAgents, tagById, paletteColors, boost, boostFor,
     recentTintCount, dragInFlight, activeDraggedKey, activeDraggedPinnedIndex,
@@ -1566,7 +1570,10 @@ const SessionRow = memo(function SessionRow({ view, actions }: SessionRowProps) 
       // A row menu opens from inside this panel, where the folder-order banner
       // (when there is one) sits over the tree -- the menu need not repeat it.
       sidebarOnScreen: true,
-    }), [rowKey, mode, onRenameStart, scope, rowTitle, onOpenSlotInNewTab])
+      // On a card with sessions under it, the menu's Close says it reaches this
+      // one session only, as visible text: a phone has no hover tooltip.
+      closeHint: closeReachHint,
+    }), [rowKey, mode, onRenameStart, scope, rowTitle, onOpenSlotInNewTab, closeReachHint])
     const rowActions = useMemo(() => (void langGen, !renamingHere && !foreignRow ? (isMobile ? (
       <div className="absolute top-1/2 -translate-y-1/2 right-1.5 flex items-center gap-0.5">
         <DropdownMenu>
@@ -1589,11 +1596,11 @@ const SessionRow = memo(function SessionRow({ view, actions }: SessionRowProps) 
           </DropdownMenuContent>
         </DropdownMenu>
         <IconButton variant="accent" title={i18nT('pages.chatSidebar.duplicate')} aria-label={i18nT('pages.chatSidebar.duplicate')} onMouseDown={e => e.stopPropagation()} onClick={e => { e.stopPropagation(); onDuplicate(rowKey) }}><GitFork size={12} /></IconButton>
-        <IconButton variant="danger" title={i18nT('pages.chatSidebar.close')} aria-label={i18nT('pages.chatSidebar.close_session')} onMouseDown={e => e.stopPropagation()} onClick={e => { e.stopPropagation(); onCloseSession(rowKey) }}><X size={12} /></IconButton>
+        <IconButton variant="danger" title={closeReachLabel ?? i18nT('pages.chatSidebar.close')} aria-label={closeReachLabel ?? i18nT('pages.chatSidebar.close_session')} onMouseDown={e => e.stopPropagation()} onClick={e => { e.stopPropagation(); onCloseSession(rowKey) }}><X size={12} /></IconButton>
       </IconButtonGroup>
     )) : null
     // `langGen` (read with `void` above) because the labels are i18nT strings, which re-translate on a catalog load.
-    ), [renamingHere, foreignRow, isMobile, rowMenuProps, onMenuCloseAutoFocus, onDuplicate, onCloseSession, rowKey, langGen])
+    ), [renamingHere, foreignRow, isMobile, rowMenuProps, onMenuCloseAutoFocus, onDuplicate, onCloseSession, closeReachLabel, rowKey, langGen])
     const rowContextMenuContent = useMemo(() => (void langGen, !foreignRow ? (
       <ContextMenuContent className="min-w-[160px]" onClick={e => e.stopPropagation()} onCloseAutoFocus={onMenuCloseAutoFocus}>
         <SessionActionsMenu variant="context" {...rowMenuProps} />
@@ -2952,6 +2959,9 @@ function ChatSidebar({
   // each behaviour has one definition. Rename + Tags stay local (they drive this
   // component's inline-edit + tag-popover state).
   const sessionActions = useSessionActions(mode)
+  // The last close the server refused, from any close path (this sidebar, a
+  // session menu elsewhere, Cmd+W): `deleteSlot` records it so none drops it.
+  const closeRefused = useAppSelector(st => st.chat.closeRefused)
   // Which sessions are currently open in a popped-out window (shared singleton).
   const { poppedOut } = useChatPopouts()
   const {
@@ -5388,6 +5398,19 @@ function ChatSidebar({
        *  Inputs are already persisted or were never typed (a create menu pick),
        *  so the hand-off loses nothing. Dismissable: the failure is a moment, not
        *  a state — the caches have already been re-synced. */}
+      {/* A refused single-session close. Dismissable: the session is simply still
+       *  open, and closing it again is the retry. A "still saving" refusal clears
+       *  on its own, so it offers no agent hand-off; any other failure does. */}
+      <ErrorNotice
+        title={i18nT('pages.chatSidebar.close_refused_title')}
+        message={closeRefused
+          ? i18nT(closeRefused.reason === 'historyWrite' ? 'pages.chatSidebar.close_refused' : 'pages.chatSidebar.close_refused_other', { title: closeRefused.title })
+          : null}
+        askAgent={closeRefused?.reason === 'failed'}
+        onDismiss={() => dispatch(setCloseRefused(null))}
+        className="mx-2 mt-2 shrink-0"
+        testId="close-refused"
+      />
       <ErrorNotice
         title={i18nT('pages.chatSidebar.folder_update_failed')}
         message={folderActionError}

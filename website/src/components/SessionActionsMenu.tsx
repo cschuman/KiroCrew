@@ -58,6 +58,9 @@ export interface SessionActionsMenuProps {
    * hosts the fork button.
    */
   onDuplicate?: () => void
+  /** A second, muted line under Close that says what the press reaches. It wraps,
+   *  so on a phone, where this menu is the only close, nothing is cut off. */
+  closeHint?: string
   /** Extra items rendered in the top "informational" group (header-only today:
    *  the MCP-servers submenu). Generic so the shared menu stays surface-agnostic. */
   infoSlots?: React.ReactNode[]
@@ -122,7 +125,7 @@ export function collapseGroups<T>(groups: (T | false | null | undefined)[][]): T
  *   [close]          Close session
  */
 export default function SessionActionsMenu({
-  variant, slotKey, mode, onReveal, onRename, onAutoTitle, onOpenInNewTab, onDuplicate, infoSlots, onColorPicked, sidebarOnScreen = false, omitPopout = false,
+  variant, slotKey, mode, onReveal, onRename, onAutoTitle, onOpenInNewTab, onDuplicate, closeHint, infoSlots, onColorPicked, sidebarOnScreen = false, omitPopout = false,
 }: SessionActionsMenuProps) {
   const Item = variant === 'context' ? ContextMenuItem : DropdownMenuItem
   const Separator = variant === 'context' ? ContextMenuSeparator : DropdownMenuSeparator
@@ -364,7 +367,17 @@ export default function SessionActionsMenu({
     // Close session — terminal, destructive
     [
       <Item key="close" className="text-danger focus:text-danger" onSelect={() => close(slotKey)}>
-        <X size={13} /> {i18nT('components.sessionActionsMenu.close_session')}
+        {closeHint ? (
+          <>
+            <X size={13} className="self-start mt-0.5 shrink-0" />
+            <span className="flex min-w-0 flex-col">
+              <span>{i18nT('components.sessionActionsMenu.close_session')}</span>
+              <span className="max-w-[15rem] whitespace-normal text-[11px] leading-snug text-muted" data-testid="close-item-hint">{closeHint}</span>
+            </span>
+          </>
+        ) : (
+          <><X size={13} /> {i18nT('components.sessionActionsMenu.close_session')}</>
+        )}
       </Item>,
     ],
   ])
