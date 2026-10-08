@@ -96,6 +96,74 @@ def test_collect_bundle_redacts_and_zips(tmp_path, monkeypatch):
     assert manifest["note"] == "every message fails"
 
 
+def test_home_prefixes_collapse_but_system_and_repo_frames_survive(tmp_path, monkeypatch):
+    """Only the home/data-home prefix is collapsed to ``~`` in bundle members.
+
+    The bundle's stated destination is a public issue, so the OS login must not
+    survive -- but a maintainer still needs the file locations that make a
+    bundle useful. Drive the collector end to end with a traceback whose frames
+    span the data-home, a system path and a repo-relative path, and assert the
+    home frames show as ``~/...`` while ``/usr/lib/...`` and ``src/kiro_crew/...``
+    frames are left intact. The ``versions.txt`` ``data_home`` line collapses the
+    same way.
+    """
+    home = tmp_path / "home"
+    _isolate(monkeypatch, home)
+    home_frame = f'  File "{home}/gateway.log", line 3, in handle'
+    system_frame = '  File "/usr/lib/python3.12/asyncio/events.py", line 80, in _run'
+    repo_frame = '  File "src/kiro_crew/diagnostics.py", line 42, in collect_bundle'
+    (home / "gateway.log").write_text(
+        f"Traceback (most recent call last):\n"
+        f"{home_frame}\n{system_frame}\n{repo_frame}\n"
+        f"a perfectly normal log line\n"
+    )
+
+    r = diagnostics.collect_bundle(output_dir=tmp_path / "out")
+
+    with zipfile.ZipFile(r.zip_path) as z:
+        gw = z.read("gateway.log").decode()
+        versions = z.read("versions.txt").decode()
+        manifest = json.loads(z.read("manifest.json"))
+
+    # The home/data-home prefix is gone from every text member, replaced by ``~``.
+    assert str(home) not in gw, "home prefix survived in gateway.log"
+    assert str(home) not in versions, "data_home absolute path survived in versions.txt"
+    assert "~/gateway.log" in gw, "home frame should collapse to ~, keeping the tail"
+    assert "data_home: ~" in versions, "data_home should collapse to ~"
+    # System and repo-relative frames are left intact so the trace stays useful.
+    assert "/usr/lib/python3.12/asyncio/events.py" in gw, "system frame must survive"
+    assert "src/kiro_crew/diagnostics.py" in gw, "repo-relative frame must survive"
+    assert ", line 3, in handle" in gw, "the rest of the home frame must survive"
+    assert "a perfectly normal log line" in gw
+    assert r.redaction_summary["versions.txt"] >= 1
+    assert manifest["total_redactions"] == r.total_redactions
+
+
+def test_credential_after_a_path_prefix_is_still_redacted(tmp_path, monkeypatch):
+    """A header sitting right after a ``file:line:`` prefix must still be redacted.
+
+    The home collapse runs LAST, after the credential rules, so a ``grep``-shaped
+    line (``<home>/req.txt:12:Authorization: Basic …``) has its credential removed
+    first and the home prefix collapsed to ``~`` second -- the credential never
+    rides along into the output.
+    """
+    home = tmp_path / "home"
+    _isolate(monkeypatch, home)
+    secret = "dXNlcjpwYXNzd29yZA=="
+    (home / "gateway.log").write_text(
+        f"{home}/app/req.txt:12:Authorization: Basic {secret}\nplain\n"
+    )
+
+    r = diagnostics.collect_bundle(output_dir=tmp_path / "out")
+
+    with zipfile.ZipFile(r.zip_path) as z:
+        gw = z.read("gateway.log").decode()
+    assert secret not in gw, "credential survived: ordering let the prefix pass run first"
+    assert str(home) not in gw, "home prefix survived"
+    assert "~/app/req.txt" in gw, "the home prefix should collapse to ~, keeping the tail"
+    assert "plain" in gw
+
+
 def test_authorization_scheme_credential_fully_redacted(tmp_path, monkeypatch):
     """A non-Bearer scheme + raw token must be fully redacted (not just the scheme)."""
     home = tmp_path / "home"

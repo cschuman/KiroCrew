@@ -176,6 +176,76 @@ def _scrub(text: str) -> tuple[str, int]:
     return text, count
 
 
+def _home_prefixes() -> list[str]:
+    """Home-directory prefixes to collapse to ``~`` in bundle text members.
+
+    Only the paths that embed the OS login: the user's home directory and the
+    data-home directory (which usually sits under it, but need not). The Windows
+    forward-slash spelling of each is included because tools that normalise
+    separators (Git Bash, pathlib/posixpath, Node) print ``C:/Users/<login>``
+    where the shell wrote ``C:\\Users\\<login>``. Longest first, so a data-home
+    nested under home collapses at the data-home boundary rather than leaving a
+    stray tail. Deduplicated, and empty candidates (a monkeypatched ``home()``
+    returning ``""``) dropped so they never match everywhere.
+    """
+    raw: list[str] = []
+    for base in (str(config_dir()), str(Path.home())):
+        if not base:
+            continue
+        raw.append(base)
+        if "\\" in base:
+            raw.append(base.replace("\\", "/"))
+    seen: set[str] = set()
+    prefixes: list[str] = []
+    for p in sorted(raw, key=len, reverse=True):
+        if p and p not in seen:
+            seen.add(p)
+            prefixes.append(p)
+    return prefixes
+
+
+def _collapse_home_prefixes(text: str) -> tuple[str, int]:
+    """Collapse home/data-home prefixes in *text* to ``~``, keeping the tail.
+
+    Narrow by design: it replaces only the leading home or data-home directory
+    with ``~`` and leaves the rest of each path intact, so a traceback frame
+    stays readable -- ``~/.kiro/crew/gateway.log`` instead of an opaque marker,
+    and system (``/usr``, ``/opt``) and repo-relative (``src/kiro_crew/...``)
+    frames are untouched. That is what makes a public bundle still debuggable
+    while keeping the OS login out of it (#12375).
+    """
+    count = 0
+    for prefix in _home_prefixes():
+        occurrences = text.count(prefix)
+        if occurrences:
+            text = text.replace(prefix, "~")
+            count += occurrences
+    return text, count
+
+
+def _scrub_bundle(text: str) -> tuple[str, int]:
+    """``_scrub`` plus a home-prefix collapse, for bundle text members only.
+
+    The bundle's stated destination is a public issue, so a text member must not
+    carry the OS login: on Windows the login is embedded in nearly every
+    path-bearing line, and ``versions.txt`` embeds the data-home path. The shared
+    :func:`_scrub` is deliberately left alone -- it also redacts the agent-facing
+    protocol-log reader, whose output goes to a model context, not a public
+    issue, so the extra pass is scoped to the bundle here.
+
+    The home collapse runs LAST, after ``_EXTRA_REDACTIONS``, so a credential
+    header sitting directly after a ``file:line:`` prefix is redacted by the
+    credential rules first and never swallowed. The collapse replaces only the
+    home and data-home PREFIX with ``~`` and keeps the rest of each path, so a
+    maintainer still sees the file location that makes a bundle useful; system
+    and repo-relative frames are left intact.
+    """
+    text, count = _scrub(text)
+    text, n = _collapse_home_prefixes(text)
+    count += n
+    return text, count
+
+
 def _kiro_log_dirs() -> list[Path]:
     """Candidate ``kiro-log`` parents, most explicit first.
 
@@ -1081,7 +1151,7 @@ def collect_bundle(
     # manifest.json, AND the pre-filled GitHub issue URL — a user may paste a
     # secret (bearer token, key) into "what happened?", so it needs the same
     # redaction the log members get below.
-    note, _ = _scrub(note or "")
+    note, _ = _scrub_bundle(note or "")
 
     stamp = time.strftime("%Y%m%d-%H%M%S", time.gmtime())
     filename = f"kirocrew-diagnostics-{stamp}-{uuid.uuid4().hex[:8]}.zip"
@@ -1140,9 +1210,14 @@ def collect_bundle(
     with os.fdopen(_fd, "wb") as _raw, zipfile.ZipFile(_raw, "w", zipfile.ZIP_DEFLATED) as zf:
         # Generated members first.
         versions = _versions_text(note, identity)
+        # ``versions.txt`` carries the absolute ``data_home`` path
+        # unconditionally, which embeds the OS login. Run it through the bundle
+        # scrub stack so the archive does not ship a local path in a file whose
+        # stated destination is a public issue.
+        versions, versions_n = _scrub_bundle(versions)
         zf.writestr("versions.txt", versions)
         result.included.append("versions.txt")
-        result.redaction_summary["versions.txt"] = 0
+        result.redaction_summary["versions.txt"] = versions_n
 
         for member, src, _gated in text_sources:
             try:
@@ -1163,7 +1238,7 @@ def collect_bundle(
             if text is None:
                 result.skipped.append(member)
                 continue
-            clean, n = _scrub(text)
+            clean, n = _scrub_bundle(text)
             zf.writestr(member, clean)
             result.included.append(member)
             result.redaction_summary[member] = n
