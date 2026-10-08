@@ -77,4 +77,29 @@ describe('AppDetailPage screenshots scroll-edge cues (#4074)', () => {
     expect(leftCue()).not.toBeNull()
     expect(rightCue()).not.toBeNull()
   })
+
+  // Opus 5.5 review finding on a2c1fe51b1: a thumbnail going terminal unmounts
+  // its button, shrinking scrollWidth with no onLoad / no box resize / (at
+  // scrollLeft 0) no scroll event — so without a failure-keyed remeasure the
+  // right-edge fade could stay on after the strip already fits. The fix adds
+  // the failure-latch size to the remeasure effect's deps.
+  it('clears the right cue after a failed thumbnail unmounts and the strip fits', () => {
+    // Overflowing at first: 3 thumbnails, right cue painted.
+    const proto = window.HTMLElement.prototype
+    const widthSpy = vi.spyOn(proto, 'scrollWidth', 'get').mockReturnValue(700)
+    vi.spyOn(proto, 'clientWidth', 'get').mockReturnValue(300)
+    vi.spyOn(proto, 'scrollLeft', 'get').mockReturnValue(0)
+    renderGallery()
+    act(() => { scroller().dispatchEvent(new Event('scroll')) })
+    expect(rightCue()).not.toBeNull()
+
+    // One thumbnail (no fallback) errors -> its button unmounts and the strip
+    // now fits. No scroll event fires; only the failure-driven remeasure can
+    // clear the stale cue.
+    widthSpy.mockReturnValue(300)
+    const imgs = document.querySelectorAll('.overflow-x-auto img')
+    expect(imgs.length).toBeGreaterThan(0)
+    act(() => { imgs[0].dispatchEvent(new Event('error')) })
+    expect(rightCue()).toBeNull()
+  })
 })

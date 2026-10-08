@@ -653,6 +653,12 @@ export default function SidePanel({
   // lists (the scroller keeps its box as tabs open/close/reorder).
   const [attachTabEdges, tabEdges, remeasureTabEdges] = useScrollEdges<HTMLUListElement>()
   useEffect(() => { remeasureTabEdges() }, [dynamicTabs, pinnedTabs, remeasureTabEdges])
+  // The pinned group scrolls under the same scrollbar-none, and its own comment
+  // notes it overflows at 320px once a host prepends leading chips — so it
+  // needs the same cue. Separate hook: it is a different scroller, and the two
+  // groups clip independently. remeasure when the leading/pinned chips change.
+  const [attachFixedEdges, fixedEdges, remeasureFixedEdges] = useScrollEdges<HTMLDivElement>()
+  useEffect(() => { remeasureFixedEdges() }, [leadingTabs, pinnedTabs, remeasureFixedEdges])
   // Terminal opens a NEW tab (its own PTY session) starting in the chat's
   // working dir; every other menu item is a singleton view.
   // Spawn a terminal whose cwd is the chat's project directory. Shared with the
@@ -1032,7 +1038,12 @@ export default function SidePanel({
             panel root's `overflow-hidden` edge, where nothing at that width
             brings them back. The chips inside stay `shrink-0`: they scroll,
             they never squeeze. */}
+        {/* Wrapper for the edge cues: the fades anchor to this non-scrolling
+            parent, not the scrolled group. min-w-0 keeps the scroller
+            shrinkable (the group must stay shrinkable per the comment above). */}
+        <div className="relative min-w-0 flex items-end">
         <div
+          ref={attachFixedEdges}
           className="flex items-end gap-2 min-w-0 overflow-x-auto scrollbar-none -mb-px"
           data-testid="side-panel-fixed-tabs"
         >
@@ -1064,6 +1075,14 @@ export default function SidePanel({
           {pinnedTabs.map(t => (
             <TabChip key={t.id} tab={t} active={t.id === activeId} closable={false} pinned onSelect={() => { void requestActive(t.id, activeId) }} onClose={() => {}} />
           ))}
+        </div>
+        {/* from-bg-elevated matches the side-panel-strip surface. */}
+        {fixedEdges.left && (
+          <div aria-hidden="true" data-testid="side-panel-fixed-tabs-cue-left" className="pointer-events-none absolute left-0 top-0 bottom-0 w-6 z-10 bg-gradient-to-r from-bg-elevated to-transparent" />
+        )}
+        {fixedEdges.right && (
+          <div aria-hidden="true" data-testid="side-panel-fixed-tabs-cue-right" className="pointer-events-none absolute right-0 top-0 bottom-0 w-6 z-10 bg-gradient-to-l from-bg-elevated to-transparent" />
+        )}
         </div>
         {/* Chrome's separator rule, extended to the pinned↔dynamic divider: a
             hairline adjacent to the ACTIVE chip goes transparent. The active

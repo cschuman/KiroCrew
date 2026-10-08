@@ -246,8 +246,8 @@ export function ScreenshotGallery({ screenshots, fallbacks }: { screenshots: str
   const fallbacksKey = fallbackList.join('\n')
   // The scroller keeps its box while its thumbnails change (list refetch, a
   // thumbnail resolving or going terminal), so only this remeasure refreshes
-  // the edge cue; per-image onLoad covers late width settling.
-  useEffect(() => { remeasure() }, [screensKey, remeasure])
+  // the edge cue; per-image onLoad covers late width settling. The remeasure
+  // effect itself lives below, after the failure latches it depends on.
   // Re-arm the latches during render rather than in a passive effect. An image
   // rendered for a new generation can fail BEFORE an effect would run, and the
   // effect's reset would then erase that real failure and re-show the dead URL.
@@ -284,6 +284,14 @@ export function ScreenshotGallery({ screenshots, fallbacks }: { screenshots: str
     && failures.fallbacksKey === fallbacksKey
     ? failures.fallback
     : NO_SCREENSHOT_FAILURES
+
+  // Refresh the edge cue when the thumbnail set changes. A thumbnail going
+  // terminal UNMOUNTS its button (resolvedAt -> ''), shrinking scrollWidth
+  // with no onLoad, no box resize and — at scrollLeft 0 — no scroll event, so
+  // the failure-latch sizes are a dep alongside screensKey: an unmount that
+  // makes the strip fit must clear a now-stale right-edge fade.
+  const failedCount = primaryFailed.size + fallbackFailed.size
+  useEffect(() => { remeasure() }, [screensKey, failedCount, remeasure])
 
   // ── screenshot magnification (issue #6162) ────────────────────────────────
   // This lightbox is the third full-viewport magnify overlay, bound by the same
