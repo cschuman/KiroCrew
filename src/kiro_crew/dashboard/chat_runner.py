@@ -494,7 +494,7 @@ from kiro_crew.members import (
     select_provider_backend,
 )
 from kiro_crew.memory_stores import UnknownMemoryStore
-from kiro_crew.messaging.commands import compact_unsupported_reply
+from kiro_crew.messaging.commands import compact_unsupported_backend, compact_unsupported_reply
 from kiro_crew.messaging.dispatch import (
     consume_reinjection,
     rearm_reinjection,
@@ -9701,11 +9701,8 @@ async def _run_chat(
             else None
         )
         if _live_provider is not None and _live_provider_alive is True:
-            # Declared on the LLMProvider ABC with a None default (H14); the
-            # ACP implementations answer from ACP_BACKENDS_COMPACT membership.
-            _compact_unsupported = getattr(
-                _live_provider, "manual_compact_unsupported_backend", None
-            )
+            # The same predicate every channel's /compact gate asks.
+            _compact_unsupported = compact_unsupported_backend(_live_provider)
         elif _is_cc_provider:
             # Claude Code compacts natively in-prompt (cc_managed).
             _compact_unsupported = None

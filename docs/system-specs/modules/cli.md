@@ -1008,7 +1008,7 @@ hook's own path expansion reads.
 ### Context Tracking
 
 After each message, checks `provider.context_usage_pct()`:
-- `>= autocompact_pct` (default 70%): compact → shutdown → restart provider, reset counter
+- `>= autocompact_pct` (default 70%): compact → shutdown → restart provider, reset counter. The compact step is skipped when `messaging.commands.compact_unsupported_backend(provider)` names the backend (it cannot serve `/compact`); the shutdown and restart still run
 - `>= autocompact_pct - CONTEXT_WARN_MARGIN_PCT`: warning printed to stderr. Relative, not absolute: the compact arm is tested first, so an absolute warn level at or above the threshold would be unreachable
 
 CLI compaction is blocking (single-user, acceptable).
