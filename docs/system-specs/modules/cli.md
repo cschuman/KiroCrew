@@ -1772,7 +1772,17 @@ on crash, and starts on boot. Implemented in `src/kiro_crew/service/`.
     value is baked into installed units, which `service install` writes once
     and no upgrade re-renders — a unit written by an earlier build keeps
     relaunching on this refusal until it is re-rendered. An existing install
-    picks the directive up by re-running `kirocrew service install`.
+    picks the directive up by re-running `kirocrew service install`, and
+    `kirocrew service status` says so: for each scope whose unit is loaded and
+    ours it asks the manager for the LOADED value (`systemctl show --all -p
+    RestartPreventExitStatus`, so drop-ins count and a file edited without a
+    daemon-reload still reads as missing) and, when that value does not name
+    78, prints one line under that scope's headline naming the directive and
+    the remedy (`sudo kirocrew service install` for the system unit; for the
+    per-user unit, add it under `[Service]` in the reported `FragmentPath` and
+    `systemctl --user daemon-reload`, never sudo). An answer with no such
+    property line makes no claim. It is read-only: nothing is rewritten and no
+    daemon-reload runs. Rewriting the unit in place is not done.
   - **Two scopes, both visible.** `install` writes the system unit only, but
     the SELinux refusal hands the operator a per-user unit
     (`render_unit(user_scope=True)`, managed with `systemctl --user`), so
