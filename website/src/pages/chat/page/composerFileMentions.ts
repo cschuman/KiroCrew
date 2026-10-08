@@ -769,6 +769,11 @@ export function useFileMentionActions({
     // is 1:1, so indices on the folded copy are the original's.
     const aliases: string[] = []
     for (const p of staged) for (const t of slotTokens[p] ?? []) aliases.push(fold(t.slice(1)))
+    // Longest alias first: when one staged mention is a prefix of another
+    // (`@report` vs `@report final.pdf`), the complete mention must win the
+    // scan, else the short alias matches inside the long one and leaves a
+    // half-reference whose chip then unstages (GPT 6.1 review).
+    aliases.sort((a, b) => b.length - a.length)
     const siblingSet = new Set(aliases)
     for (const bare of aliases) {
       const others = new Set([...siblingSet].filter(a => a !== bare))

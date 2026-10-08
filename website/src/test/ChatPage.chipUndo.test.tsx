@@ -62,6 +62,7 @@ vi.mock('../pages/chat/SidePanel', () => ({
     <>
       <div><button onClick={() => onAddToContext?.('/repo/report', 'file')}>Add to chat: report</button></div>
       <div><button onClick={() => onAddToContext?.('/repo/report,', 'file')}>Add to chat: report,</button></div>
+      <div><button onClick={() => onAddToContext?.('/repo/report final.pdf', 'file')}>Add to chat: report final.pdf</button></div>
       <div><button onClick={() => onAddToContext?.('/repo/src/main.ts', 'file')}>Add to chat: main.ts</button></div>
     </>
   ),
@@ -375,6 +376,39 @@ describe('ChatPage file chip remove + undo', { timeout: 15_000 }, () => {
     const llm = await send(ta)
     expect(llm).not.toContain('@src/main.t')
     expect(llm).not.toMatch(/\[attached_file \d\]/)
+  })
+
+  // #14675 (GPT 6.1 review): when one staged alias is a space-boundary prefix
+  // of another (`report` vs `report final.pdf`), the atomic delete must match
+  // the WHOLE mention at the caret, not let the shorter alias `report` match
+  // inside `@report final.pdf` (where the space after `report` is a valid
+  // mention boundary). Deleting inside the longer mention must remove it
+  // whole, not leave `final.pdf` behind and drop the longer file's chip.
+  // FAILS without the longest-first sort: the short `report` wins the scan.
+  it('atomic delete picks the whole mention, not a shorter space-boundary prefix sibling (#14675, GPT 6.1 review)', async () => {
+    const store = makeStore('slot-a', [{ key: 'slot-a', project: '/repo' }])
+    await renderPage(store)
+    act(() => { store.dispatch(openActivityPanel()) })
+    fireEvent.click(await screen.findByText('Add to chat: report'))
+    await waitFor(() => expect(screen.getAllByLabelText('Remove')).toHaveLength(1))
+    fireEvent.click(await screen.findByText('Add to chat: report final.pdf'))
+    await waitFor(() => expect(screen.getAllByLabelText('Remove')).toHaveLength(2))
+    const ta = screen.getByLabelText('Message input') as HTMLTextAreaElement
+    fireEvent.change(ta, { target: { value: 'see @report and @report final.pdf please' } })
+    await waitFor(() => expect(screen.getAllByLabelText('Remove')).toHaveLength(2))
+    // Caret just past the `@report` prefix INSIDE the longer `@report
+    // final.pdf` mention -- the exact spot where the short alias `report`
+    // (space-boundary) would wrongly match without the longest-first sort.
+    const caret = 'see @report and @report'.length
+    ta.setSelectionRange(caret, caret)
+    await act(async () => { fireEvent.keyDown(ta, { key: 'Backspace' }) })
+
+    // The whole longer mention is gone -- NOT reduced to `final.pdf` by a
+    // short-alias match -- and the standalone `@report` is untouched.
+    await waitFor(() => expect(ta.value).toBe('see @report and please'))
+    expect(ta.value).not.toContain('final.pdf')
+    expect(ta.value).toContain('@report ')
+    await waitFor(() => expect(screen.getAllByLabelText('Remove')).toHaveLength(1))
   })
 
   // The mirror of the above for the forward Delete key, caret just BEFORE the

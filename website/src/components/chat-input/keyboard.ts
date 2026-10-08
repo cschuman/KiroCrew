@@ -152,6 +152,11 @@ export function useComposerKeyDown({ rawPasteRef, handleUndoKey, endUndoBurst, h
       const edit = onMentionKey(valueRef.current, ta.selectionStart ?? 0, ta.selectionEnd ?? 0, e.key, mods)
       if (edit) {
         e.preventDefault()
+        // Give the atomic delete its own undo entry: a short mention removed
+        // within the typing burst would otherwise fold into it, so Ctrl+Z
+        // would jump past the text typed before it instead of restoring just
+        // the mention (matches applyTextareaListBreak / removeFileEndingUndoBurst).
+        endUndoBurst()
         onChange(edit.value)
         requestAnimationFrame(() => inputRef.current?.setSelectionRange(edit.caret, edit.caret))
         return
