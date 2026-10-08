@@ -1352,7 +1352,29 @@ def _trees_stat_equal(a: Path, b: Path) -> bool:
     return True
 
 
-def _skill_tree_fingerprint(root: Path, *, assume_owner_rwx_dirs: bool = False) -> str | None:
+def _strip_carried_opt_out(data: bytes) -> bytes | None:
+    """Return the SKILL.md bytes *data* minus a carried ``inject_on_trigger: false``.
+
+    Only the exact form the builtin sync writes is recognised: *data* must be
+    what the shared rewrite produces when it applies the opt-out to the
+    returned bytes. Anything else (no line, a ``true`` value, an indented
+    occurrence, a hand-placed line elsewhere in the block, undecodable bytes)
+    returns None, so the caller treats the tree as unprovable rather than
+    tolerating an edit.
+    """
+    try:
+        text = data.decode("utf-8")
+    except UnicodeDecodeError:
+        return None
+    stripped = _authoring.rewrite_inject_on_trigger(text, True)
+    if stripped is None or _authoring.rewrite_inject_on_trigger(stripped, False) != text:
+        return None
+    return stripped.encode("utf-8")
+
+
+def _skill_tree_fingerprint(
+    root: Path, *, assume_owner_rwx_dirs: bool = False, strip_carried_opt_out: bool = False
+) -> str | None:
     """Stable content hash of the whole skill tree under *root*.
 
     Covers every entry ``_tree_entries`` yields — file bytes, symlink targets,
@@ -1371,6 +1393,13 @@ def _skill_tree_fingerprint(root: Path, *, assume_owner_rwx_dirs: bool = False) 
     the root — so a component swapped between the walk and the open (or a
     hardlink planted at a walked name) reads as unprovable instead of leaking
     outside bytes (e.g. credentials) into the hash.
+
+    ``strip_carried_opt_out`` hashes the tree as it was before the sync carried
+    the user's Context-budget opt-out onto it: the top-level ``SKILL.md`` bytes
+    already read through the hardened path above are passed through
+    ``_strip_carried_opt_out`` and hashed with their stripped size. Every
+    other entry, and every guard, is unchanged. A ``SKILL.md`` that does not
+    hold exactly the carried line makes the tree unprovable (None).
     """
     if is_link_or_junction(root):
         return None
@@ -1397,8 +1426,8 @@ def _skill_tree_fingerprint(root: Path, *, assume_owner_rwx_dirs: bool = False) 
         entries += 1
         if entries > _FINGERPRINT_MAX_ENTRIES:
             return None
-        digest.update(f"{kind}\0{rel}\0{detail}\0".encode("utf-8", "surrogatepass"))
         if kind != "file":
+            digest.update(f"{kind}\0{rel}\0{detail}\0".encode("utf-8", "surrogatepass"))
             continue
         try:
             data = safe_read_file_bytes_nolink(
@@ -1411,6 +1440,15 @@ def _skill_tree_fingerprint(root: Path, *, assume_owner_rwx_dirs: bool = False) 
         if data is None:
             return None
         budget -= len(data)
+        if strip_carried_opt_out and rel == "SKILL.md":
+            # The bytes come from the descriptor-pinned read above; only
+            # their content and the size recorded for them are substituted.
+            stripped = _strip_carried_opt_out(data)
+            if stripped is None:
+                return None
+            data = stripped
+            detail = f"{len(data)}:{detail.split(':', 1)[1]}"
+        digest.update(f"{kind}\0{rel}\0{detail}\0".encode("utf-8", "surrogatepass"))
         digest.update(data)
     return digest.hexdigest()
 
@@ -1482,12 +1520,30 @@ def _record_builtin_provenance(dest_dir: Path) -> None:
     _write_provenance_marker(dest_dir, fingerprint)
 
 
+def _matches_recorded(root: Path, recorded: str, current: str | None) -> bool:
+    """Does the tree at *root* (fingerprinted as *current*) match *recorded*?
+
+    The marker records the PACKAGED tree's fingerprint. A tree the sync
+    installed while carrying the user's Context-budget opt-out differs from
+    that by the one ``inject_on_trigger: false`` line on ``SKILL.md``, so when
+    the straight comparison fails the tree is fingerprinted again with that
+    line stripped. Any other difference still fails both comparisons.
+    """
+    if current is None:
+        return False
+    if current == recorded:
+        return True
+    return _skill_tree_fingerprint(root, strip_carried_opt_out=True) == recorded
+
+
 def _verified_unchanged_fingerprint(dest_dir: Path, src_dir: Path | None) -> str | None:
     """Return *dest_dir*'s fingerprint iff it is verifiably an unchanged copy
     this sync installed, else None.
 
     Two ways to prove ownership:
-    - The recorded provenance fingerprint still matches the tree on disk.
+    - The recorded provenance fingerprint still matches the tree on disk,
+      allowing for a carried Context-budget opt-out (``_matches_recorded``).
+      The value returned is the tree's own fingerprint either way.
     - First-install migration rule: installs that predate provenance recording
       carry no marker, and a naive "no marker means user-authored" rule would
       freeze every already-installed builtin at its current version forever.
@@ -1508,7 +1564,7 @@ def _verified_unchanged_fingerprint(dest_dir: Path, src_dir: Path | None) -> str
     recorded = _recorded_fingerprint(dest_dir)
     if recorded is not None:
         current = _skill_tree_fingerprint(dest_dir)
-        return current if current == recorded else None
+        return current if _matches_recorded(dest_dir, recorded, current) else None
     if src_dir is None:
         return None
     if not _trees_stat_equal(dest_dir, src_dir):
@@ -1578,7 +1634,12 @@ def installed_skill_currency() -> list[InstalledSkillCurrency]:
     The recorded value is therefore a portable content identity of the package
     the install came from, and comparing it against a fresh fingerprint of the
     packaged tree needs no version constant inside any shipped file, no marker
-    format change, and no network call.
+    format change, and no network call. One install differs from the tree the
+    marker records: a builtin the sync reinstalled while carrying the user's
+    Context-budget opt-out holds one extra ``inject_on_trigger: false`` line in
+    ``SKILL.md``. The marker still records the PACKAGED fingerprint, and the
+    ownership check tolerates exactly that line (``_matches_recorded``), so
+    such an install reads as in sync rather than edited or behind.
 
     What makes staleness silent today is the update gate, not the marker: it
     compares mtimes, so an installed copy carrying an mtime newer than anything
@@ -1723,7 +1784,7 @@ def _skill_currency_state(dest_dir: Path, src_dir: Path) -> str:
     installed = _skill_tree_fingerprint(dest_dir)
     if installed is None:
         return SKILL_INSTALL_UNVERIFIABLE
-    if installed != recorded:
+    if not _matches_recorded(dest_dir, recorded, installed):
         return SKILL_INSTALL_EDITED
     packaged = _skill_tree_fingerprint(src_dir, assume_owner_rwx_dirs=True)
     if packaged is None:
@@ -2150,8 +2211,8 @@ def _dest_opted_out_of_injection(dest_dir: Path) -> bool:
     return str(meta.get("inject_on_trigger", "")).strip().lower() == "false"
 
 
-def _carry_injection_opt_out(dest_dir: Path) -> None:
-    """Re-apply ``inject_on_trigger: false`` onto a just-installed builtin.
+def _carried_skill_md(src_dir: Path) -> bytes | None:
+    """Return the packaged ``SKILL.md`` bytes with ``inject_on_trigger: false`` applied.
 
     Mirrors ``skill_runtime.versions._rewrite_update_frontmatter`` and the
     auto-skill refine path: a packaged ``SKILL.md`` never carries the switch, so
@@ -2160,30 +2221,67 @@ def _carry_injection_opt_out(dest_dir: Path) -> None:
     behind an unrelated app update. Append the one frontmatter
     line the user set, leaving the rest of the packaged body authoritative.
 
-    Best-effort: a frontmatter-less or unreadable packaged file is left as-is
-    rather than failing the sync. The caller re-fingerprints afterwards so the
-    carried line is the recorded baseline, not a divergence the next update
-    would quarantine.
+    The input is the PACKAGED file, never the installed one: the carried bytes
+    are staged before anything is published, so no installed file is read and
+    then rewritten while a concurrent writer could replace it.
+
+    Returns None (install the packaged file verbatim) when the packaged copy
+    already opts out, so the install still equals the packaged tree the marker
+    records, and on any read/decode/parse failure: a carry is best-effort,
+    never a reason to fail the sync.
     """
-    skill_file = dest_dir / "SKILL.md"
     try:
-        content = skill_file.read_text(encoding="utf-8")
+        data = safe_read_file_bytes_nolink(str(src_dir / "SKILL.md"), within_root=str(src_dir))
+    except (OSError, ValueError, FileTooLargeError):
+        return None
+    if data is None:
+        return None
+    try:
+        content = data.decode("utf-8")
+    except UnicodeDecodeError:
+        return None
+    try:
+        packaged_meta = parse_frontmatter(content, SKILL_LOADER)
     except (OSError, ValueError):
-        return
-    m = re.match(r"^---\n(.*?)\n---\n?(.*)$", content, re.DOTALL)
-    if not m:
-        return
-    fm_lines = [
-        ln for ln in m.group(1).split("\n") if not ln.lower().startswith("inject_on_trigger:")
-    ]
-    fm_lines.append("inject_on_trigger: false")
-    new_content = "---\n" + "\n".join(fm_lines) + "\n---\n" + m.group(2)
-    try:
-        atomic_write(skill_file, new_content)
-    except OSError:
-        logger.warning(
-            "could not carry inject_on_trigger opt-out onto %s", skill_file, exc_info=True
-        )
+        return None
+    if str(packaged_meta.get("inject_on_trigger", "")).strip().lower() == "false":
+        return None
+    new_content = _authoring.rewrite_inject_on_trigger(content, False)
+    if new_content is None:
+        return None
+    return new_content.encode("utf-8")
+
+
+def _copy_with_carried_skill_md(dest_dir: Path, carried: bytes) -> Callable[[str, str], str]:
+    """``copytree`` copy function that publishes *carried* as the top-level ``SKILL.md``.
+
+    Every other file is copied with ``shutil.copy2``. The top-level
+    ``SKILL.md`` is created exclusively with the carried bytes and then given
+    the packaged file's mode and timestamps (``shutil.copystat``), exactly as
+    ``copy2`` would, so the published file differs from the packaged one only
+    by the carried line. The fingerprint hashes file modes, and the carried-line
+    tolerance substitutes only the size, so a mode that differed (an
+    owner-only temp file, say) would read as an edit and be quarantined.
+
+    The file is written once, as it is published. If something else created it
+    first, that file is left alone rather than overwritten; the marker records
+    the packaged fingerprint, so it reads as a divergence and is preserved.
+    """
+    target = os.path.normcase(os.path.join(os.fspath(dest_dir), "SKILL.md"))
+
+    def _copy(src: str, dst: str) -> str:
+        if os.path.normcase(os.fspath(dst)) != target:
+            return shutil.copy2(src, dst)
+        try:
+            with open(dst, "xb") as fh:
+                fh.write(carried)
+        except FileExistsError:
+            logger.info("%s appeared before the sync published it; keeping it", dst)
+            return dst
+        shutil.copystat(src, dst)
+        return dst
+
+    return _copy
 
 
 def _ensure_builtin_skills(base: Path) -> None:
@@ -2230,7 +2328,7 @@ def _ensure_builtin_skills(base: Path) -> None:
             dest_dir = base / name
             dest_file = dest_dir / "SKILL.md"
             # Set only when a diverged destination carried the user's
-            # Context-budget opt-out; re-applied after the packaged copy lands.
+            # Context-budget opt-out; applied as the packaged copy is written.
             carry_opt_out = False
             # The manifest's own mtime is not a proxy for the skill's: a
             # release that only changes ``scripts/`` leaves ``SKILL.md``
@@ -2269,18 +2367,19 @@ def _ensure_builtin_skills(base: Path) -> None:
                         _write_provenance_marker(dest_dir, adopted)
                 continue
             if dest_dir.exists() or is_link_or_junction(dest_dir):
-                # The Context-budget switch is the one user-mutable setting on a
-                # built-in skill; read it off the destination now, before the
-                # claim renames it away, so it can be carried onto the packaged
-                # copy below. A diverged tree is otherwise quarantined whole and
-                # the setting lost.
-                carry_opt_out = _dest_opted_out_of_injection(dest_dir)
                 claim = _claim_dir_for_replacement(dest_dir)
                 if claim is None:
                     continue
                 verified: str | None = None
                 if not is_link_or_junction(claim):
                     verified = _verified_unchanged_fingerprint(claim, src_dir)
+                    # The Context-budget switch is the one user-mutable setting
+                    # on a built-in skill. Read it from the CLAIMED tree, after
+                    # the atomic rename aside, not from dest_dir before the
+                    # claim: the claim fixes which tree is verified and retired,
+                    # so a dashboard toggle landing in that window is reflected
+                    # here instead of being read stale and then discarded.
+                    carry_opt_out = _dest_opted_out_of_injection(claim)
                 if not is_link_or_junction(claim) and not _tree_has_content(claim):
                     # A placeholder holding nothing but (at most) our own
                     # provenance marker has no user bytes to preserve; the
@@ -2324,8 +2423,19 @@ def _ensure_builtin_skills(base: Path) -> None:
             # copy equals the source (the package ships only regular files and
             # directories), so the source fingerprint is the copy's.
             src_fingerprint = _skill_tree_fingerprint(src_dir, assume_owner_rwx_dirs=True)
+            # The carried opt-out is staged from the PACKAGED SKILL.md and
+            # written by the copy itself, so the published file is created
+            # once, with the packaged mode, and never read back and rewritten.
+            carried = _carried_skill_md(src_dir) if carry_opt_out else None
             try:
-                shutil.copytree(src_dir, dest_dir)
+                if carried is None:
+                    shutil.copytree(src_dir, dest_dir)
+                else:
+                    shutil.copytree(
+                        src_dir,
+                        dest_dir,
+                        copy_function=_copy_with_carried_skill_md(dest_dir, carried),
+                    )
             except FileExistsError:
                 # Another process (gateway + CLI syncing the same home) won
                 # the install race after our claim; its copy of the same
@@ -2345,26 +2455,7 @@ def _ensure_builtin_skills(base: Path) -> None:
             # later chmod on the installed copy (including removing
             # any owner-rwx bit) still diverges.
             ensure_owner_rwx_dirs(dest_dir)
-            if carry_opt_out:
-                # The user had turned this built-in skill's Context-budget
-                # switch off; the packaged copy ships it on. Re-apply the
-                # opt-out, then record the fingerprint of the RESULTING tree
-                # (not the packaged source's) so the carried line reads as the
-                # installed baseline instead of a divergence the next update
-                # would quarantine.
-                _carry_injection_opt_out(dest_dir)
-                carried_fingerprint = _skill_tree_fingerprint(dest_dir)
-                if carried_fingerprint is not None:
-                    _write_provenance_marker(dest_dir, carried_fingerprint)
-                else:
-                    logger.warning(
-                        "installed skill tree %s cannot be fingerprinted after "
-                        "carrying the inject_on_trigger opt-out; installed "
-                        "%s without provenance",
-                        dest_dir,
-                        name,
-                    )
-            elif src_fingerprint is not None:
+            if src_fingerprint is not None:
                 _write_provenance_marker(dest_dir, src_fingerprint)
             else:
                 logger.warning(
