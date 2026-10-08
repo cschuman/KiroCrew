@@ -77,7 +77,7 @@ async def test_a_release_completes_while_a_spawn_is_in_flight() -> None:
     released = await asyncio.wait_for(reg.release(held.lease), timeout=1)
     assert released is not None and released.pid == 9
     launch.finish.set()
-    await task
+    await asyncio.wait_for(task, timeout=2)
 
 
 @pytest.mark.asyncio
@@ -138,7 +138,7 @@ async def test_a_raising_spawn_leaves_no_marker_and_no_parked_waiter() -> None:
     await _settle()
     founder.finish.set()
     with pytest.raises(RuntimeError, match="launch failed"):
-        await t1
+        await asyncio.wait_for(t1, timeout=2)
     # The waiter is not handed the founder's error; it founds on its own.
     got = await asyncio.wait_for(t2, timeout=1)
     assert got.runtime.pid == 2 and not got.joined
@@ -155,7 +155,7 @@ async def test_a_cancelled_founder_wakes_its_waiters_and_clears_its_marker() -> 
     await _settle()
     t1.cancel()
     with pytest.raises(asyncio.CancelledError):
-        await t1
+        await asyncio.wait_for(t1, timeout=2)
     got = await asyncio.wait_for(t2, timeout=1)
     assert got.runtime.pid == 2 and reg._foundings == [] and len(reg._entries) == 1
 
@@ -171,7 +171,7 @@ async def test_a_cancelled_waiter_does_not_cancel_the_shared_launch() -> None:
     await _settle()
     quitter.cancel()
     with pytest.raises(asyncio.CancelledError):
-        await quitter
+        await asyncio.wait_for(quitter, timeout=2)
     founder.finish.set()
     first, joined = await asyncio.wait_for(asyncio.gather(t1, stayer), timeout=2)
     assert joined.runtime is first.runtime and joined.leases_on_runtime == 2
@@ -189,7 +189,7 @@ async def test_a_cancelled_waiter_returns_its_reservation() -> None:
     await _settle()
     quitter.cancel()
     with pytest.raises(asyncio.CancelledError):
-        await quitter
+        await asyncio.wait_for(quitter, timeout=2)
     t3 = asyncio.create_task(reg.acquire("k", "s3", late, cap=2))
     await _settle()
     assert late.calls == 0
