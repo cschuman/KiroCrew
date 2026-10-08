@@ -2390,6 +2390,33 @@ def get_shipped_tools() -> dict[str, list[str]]:
     return {k: shipped.get(k, []) for k in ("tools", "allowedTools")}
 
 
+def _claim_propagated_model(config: dict, name: str) -> None:
+    """Record *name*'s model as managed once a published spec carries the global.
+
+    Runs only after the spec write returned, so a write that fails leaves the
+    sidecar as it was. When the spec on disk holds the concrete global model,
+    that value is the propagation's, not a legacy pin: recording it managed is
+    what lets returning the global to "auto" clear it. An explicit pick
+    (``False``) is never claimed, and an unreadable sidecar claims nothing.
+    """
+    from kiro_crew.config.loader import coerce_config_field, normalize_agent_model
+
+    mc_cfg = _load_json(_mc_config_path()) or {}
+    global_model = normalize_agent_model(
+        coerce_config_field(mc_cfg, "agent", dict, {}).get("model")
+    )
+    if not global_model or config.get("model") != global_model:
+        return
+    try:
+        agent_state.claim_model_managed_if_unset(name)
+    except (OSError, ValueError):
+        logger.warning(
+            "Agent state sidecar unreadable; not recording model ownership for %s",
+            name,
+            exc_info=True,
+        )
+
+
 def _load_existing_config(
     path: Path, *, gated_off: "frozenset[str] | None" = None
 ) -> tuple[dict, bool]:
@@ -3741,6 +3768,7 @@ def rebuild_agent_config(
         app_owned_at_start=_app_owned_at_start,
     )
     logger.info("Installed agent config: %s", path)
+    _claim_propagated_model(config, main_name)
 
     # Install KiroCrew AIM capabilities package (includes kirocrew-lite)
     _install_aim_capabilities()
