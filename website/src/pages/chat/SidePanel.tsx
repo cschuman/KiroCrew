@@ -6,6 +6,7 @@ import { usePreviewFlag } from '../../hooks/usePreviewFlag'
 import { PREVIEW_DASHBOARD } from '../../utils/previewFlags'
 import { usePointerDrag } from '../../hooks/usePointerDrag'
 import { useLongPressReorder } from '../../hooks/useLongPressReorder'
+import { useScrollEdges } from '../../hooks/useScrollEdges'
 import { Reorder } from 'framer-motion'
 import { FileText, Bot, Workflow, ScrollText, MessageCircleQuestionMark, TerminalSquare, GitCompare, GitPullRequest, GitBranch, History, Plus, MoreHorizontal, X, Hash, Pen, Columns2, Component, Globe, CircleDot, Folder, Folders, Link as LinkIcon, PanelRight, PanelBottom, Layers, ListTree, Pin } from 'lucide-react'
 import { SidePanelDockHost, SidePanelGlyph } from '../../components/SidePanelGlyph'
@@ -646,6 +647,12 @@ export default function SidePanel({
   }, [onClose, activeId])
   const pinnedTabs = useMemo(() => visibleTabs.filter(t => (PINNED_VIEWS as string[]).includes(t.id)), [visibleTabs])
   const dynamicTabs = useMemo(() => visibleTabs.filter(t => !(PINNED_VIEWS as string[]).includes(t.id)), [visibleTabs])
+  // Edge cues for the dynamic session-tab group — the real overflow site when
+  // many sessions are open. It hides its scrollbar, so a gradient is the only
+  // signal that tabs continue past the clipped edge. remeasure on the tab
+  // lists (the scroller keeps its box as tabs open/close/reorder).
+  const [attachTabEdges, tabEdges, remeasureTabEdges] = useScrollEdges<HTMLUListElement>()
+  useEffect(() => { remeasureTabEdges() }, [dynamicTabs, pinnedTabs, remeasureTabEdges])
   // Terminal opens a NEW tab (its own PTY session) starting in the chat's
   // working dir; every other menu item is a singleton view.
   // Spawn a terminal whose cwd is the chat's project directory. Shared with the
@@ -1077,7 +1084,13 @@ export default function SidePanel({
             }`}
           />
         )}
+        {/* Wrapper for the edge cues: the fades anchor to this non-scrolling
+            parent, not the scrolled group. min-w-0 keeps the scroller
+            shrinkable. The -mb-px (border overlap) stays on the group itself,
+            which the seam-hairline contract pins. */}
+        <div className="relative min-w-0 flex items-end">
         <Reorder.Group
+          ref={attachTabEdges}
           axis="x"
           values={dynamicTabs}
           onReorder={(next) => setOrder([...pinnedTabs, ...next])}
@@ -1099,6 +1112,14 @@ export default function SidePanel({
             />
           ))}
         </Reorder.Group>
+        {/* from-bg-elevated matches the side-panel-strip surface. */}
+        {tabEdges.left && (
+          <div aria-hidden="true" data-testid="side-panel-tabs-cue-left" className="pointer-events-none absolute left-0 top-0 bottom-0 w-6 z-10 bg-gradient-to-r from-bg-elevated to-transparent" />
+        )}
+        {tabEdges.right && (
+          <div aria-hidden="true" data-testid="side-panel-tabs-cue-right" className="pointer-events-none absolute right-0 top-0 bottom-0 w-6 z-10 bg-gradient-to-l from-bg-elevated to-transparent" />
+        )}
+        </div>
         {/* + menu — the shared shadcn/Radix dropdown, so this strip gets the
             same pill hover, portalled positioning, focus trap/restore, roving
             arrow-key focus and Escape handling as every other menu in the app
