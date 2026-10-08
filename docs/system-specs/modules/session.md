@@ -3575,7 +3575,9 @@ but is NOT named: it started nothing, is woken or held, and lands after the reco
 (naming it recorded a kill failure over a clean reap). A caller held at the front
 door holds no reservation at all. `open_task_session`, the other
 publication door, is refused at its entry while the fence is up rather than held:
-it holds no reservation and creates on a shared runtime with no hard-kill path, so
+it reserves the key only around its create (so `has_allocation_reservation` and
+`session_keys()` see the window) but is never refused at registration and has no
+hard-kill path on the shared runtime, so
 a per-step create already in flight is what the ending caller's post-pass read of
 the key remains the net for. Additive to the allocation-boundary predecessor
 capture: new state fields, new methods, and door checks as separate statements.
